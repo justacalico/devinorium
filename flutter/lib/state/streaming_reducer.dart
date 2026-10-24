@@ -48,7 +48,7 @@ StreamingReduceResult reduceStreamingEvent({
         // message once the backend finishes saving.
         return StreamingReduceResult(
           detail: detail,
-          snapshot: next.copyWith(thinkingActive: false),
+          snapshot: next.copyWith(thinkingActive: false, clearRateLimit: true),
         );
       }
       final finished = _finishSnapshot(next);

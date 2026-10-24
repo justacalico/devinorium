@@ -105,7 +105,10 @@ fn relative_delay(error: &str) -> Option<Duration> {
     if !secs.is_finite() || secs < 0.0 {
         return None;
     }
-    Some(Duration::from_secs_f64(secs))
+    // `from_secs_f64` panics above ~1.8e19 s; provider-controlled text could
+    // carry an absurd hint, so clamp before constructing (retry_delay clamps
+    // to MAX_DELAY anyway).
+    Some(Duration::from_secs_f64(secs.min(MAX_DELAY.as_secs_f64())))
 }
 
 fn absolute_delay(error: &str, now: DateTime<Utc>) -> Option<Duration> {
@@ -201,6 +204,18 @@ mod tests {
         assert_eq!(
             retry_delay("rate limit, try again in 500 ms", at(0, 0, 0)),
             Some(DEFAULT_DELAY)
+        );
+    }
+
+    #[test]
+    fn absurdly_large_hint_cannot_panic() {
+        // from_secs_f64 would panic on this without the pre-clamp.
+        assert_eq!(
+            retry_delay(
+                "rate limit, reset in 99999999999999999999 seconds",
+                at(0, 0, 0)
+            ),
+            Some(MAX_DELAY)
         );
     }
 

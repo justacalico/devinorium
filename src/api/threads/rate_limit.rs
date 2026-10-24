@@ -62,11 +62,18 @@ pub(crate) async fn call_provider_with_retry(
         {
             return Err(e);
         }
-        let Some(delay) = crate::rate_limit::retry_delay(&e.to_string(), Utc::now()) else {
+        // `{e:#}` prints the whole anyhow chain so a wrapped context line
+        // cannot hide the provider's rate-limit text.
+        let Some(delay) = crate::rate_limit::retry_delay(&format!("{e:#}"), Utc::now()) else {
             return Err(e);
         };
         attempt += 1;
         if attempt > crate::rate_limit::MAX_RETRIES {
+            return Err(anyhow::anyhow!(
+                "{e:#} (gave up after {attempt} rate-limit retries)"
+            ));
+        }
+        if run.cancelled.load(Ordering::SeqCst) {
             return Err(e);
         }
 

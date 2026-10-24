@@ -1448,6 +1448,7 @@ class ThreadStore {
       clearPendingPermission: true,
       clearPendingAsk: true,
       clearStartedAt: true,
+      clearRateLimit: true,
       error: error,
       clearError: error == null,
     );

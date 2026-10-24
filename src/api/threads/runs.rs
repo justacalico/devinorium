@@ -61,6 +61,8 @@ pub(super) async fn get_run(
             "parts": [],
             "permission_request": null,
             "ask_request": null,
+            "plan": null,
+            "rate_limit": null,
             "last_seq": 0,
         }))
         .into_response(),
@@ -552,6 +554,17 @@ pub(crate) async fn run_thread(
     }
 
     let session_for_usage = new_session_id.clone();
+    // Retried rate-limit turns can stream output from an attempt that later
+    // failed; run.parts is what the client actually watched, so persist it
+    // rather than only the final call's parts.
+    let parts = {
+        let accumulated = run.parts.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if accumulated.is_empty() {
+            parts
+        } else {
+            accumulated
+        }
+    };
     let assistant_msg = match persist_assistant_reply(
         &state,
         &thread,
