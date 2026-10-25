@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.109.0 - 2026-10-25
+#### Features
+- Devin CLI 限流自动重试与倒计时 - (4101c36) - HttpAnimations
+#### Bug Fixes
+- 重试 tailscale 进程派生的瞬时失败 - (e42b2ff) - HttpAnimations
+- 修正限流重试的溢出与状态清理边界 - (a6319d4) - HttpAnimations
+
+- - -
+
 ## v0.108.2 - 2026-10-19
 #### Bug Fixes
 - 草稿节流后末尾落盘 - (6c9f64b) - HttpAnimations
