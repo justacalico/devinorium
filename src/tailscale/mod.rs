@@ -19,6 +19,8 @@ pub const DEFAULT_SERVE_PORT: u16 = 443;
 const STATUS_TIMEOUT: Duration = Duration::from_millis(1_500);
 const SERVE_TIMEOUT: Duration = Duration::from_secs(10);
 const PROBE_TIMEOUT: Duration = Duration::from_millis(2_500);
+const SPAWN_ATTEMPTS: u32 = 5;
+const SPAWN_RETRY_DELAY: Duration = Duration::from_millis(50);
 
 /// What `tailscale status --json` tells us about this node.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -209,28 +211,41 @@ impl Tailscale {
         args: &[&str],
         timeout: Duration,
     ) -> Result<std::process::Output, TailscaleError> {
-        let fut = Command::new(&self.bin)
-            .args(args)
-            .kill_on_drop(true)
-            .output();
-        match tokio::time::timeout(timeout, fut).await {
-            Err(_) => Err(TailscaleError::Timeout { subcommand }),
-            Ok(Err(e)) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::PermissionDenied) => {
-                Err(TailscaleError::NotInstalled)
+        // Spawn can fail transiently under load (ETXTBSY, EAGAIN); current
+        // subcommands are read-only or idempotent, so a bounded retry is
+        // safe.
+        for attempt in 0..SPAWN_ATTEMPTS {
+            let fut = Command::new(&self.bin)
+                .args(args)
+                .kill_on_drop(true)
+                .output();
+            match tokio::time::timeout(timeout, fut).await {
+                Err(_) => return Err(TailscaleError::Timeout { subcommand }),
+                Ok(Err(e))
+                    if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::PermissionDenied) =>
+                {
+                    return Err(TailscaleError::NotInstalled);
+                }
+                Ok(Err(e)) => {
+                    tracing::debug!("failed to spawn tailscale {subcommand}: {e}");
+                    if attempt + 1 == SPAWN_ATTEMPTS {
+                        return Err(TailscaleError::Command {
+                            subcommand,
+                            diagnostic: StderrDiagnostic::Unknown.label(),
+                        });
+                    }
+                    tokio::time::sleep(SPAWN_RETRY_DELAY).await;
+                }
+                Ok(Ok(out)) if out.status.success() => return Ok(out),
+                Ok(Ok(out)) => {
+                    return Err(TailscaleError::Command {
+                        subcommand,
+                        diagnostic: classify_stderr(&out.stderr).label(),
+                    })
+                }
             }
-            Ok(Err(e)) => {
-                tracing::debug!("failed to spawn tailscale {subcommand}: {e}");
-                Err(TailscaleError::Command {
-                    subcommand,
-                    diagnostic: StderrDiagnostic::Unknown.label(),
-                })
-            }
-            Ok(Ok(out)) if out.status.success() => Ok(out),
-            Ok(Ok(out)) => Err(TailscaleError::Command {
-                subcommand,
-                diagnostic: classify_stderr(&out.stderr).label(),
-            }),
         }
+        unreachable!("spawn attempts exhausted")
     }
 }
 
@@ -715,6 +730,78 @@ mod tests {
             assert!(matches!(
                 ts.ensure_serve("http://127.0.0.1:7878", 443).await,
                 Err(TailscaleError::NotInstalled)
+            ));
+        }
+
+        #[tokio::test]
+        async fn spawn_retry_recovers_from_text_busy() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("tailscale");
+            std::fs::write(
+                &path,
+                "#!/bin/sh\necho '{\"BackendState\":\"Running\",\"Self\":{\"DNSName\":\"h.t.ts.net.\"}}'\n",
+            )
+            .unwrap();
+            let mut perms = std::fs::metadata(&path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&path, perms).unwrap();
+            // An open write fd makes execve fail with ETXTBSY until closed.
+            let writer = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap();
+            let ts = Tailscale::new(path.to_string_lossy().to_string());
+            let closer = std::thread::spawn(move || {
+                std::thread::sleep(SPAWN_RETRY_DELAY);
+                drop(writer);
+            });
+            let status = ts.read_status().await.unwrap();
+            closer.join().unwrap();
+            assert_eq!(status.magic_dns_name.as_deref(), Some("h.t.ts.net"));
+        }
+
+        #[tokio::test]
+        async fn command_failure_is_not_retried() {
+            let dir = tempfile::tempdir().unwrap();
+            let log = dir.path().join("runs.log");
+            let path = dir.path().join("tailscale");
+            std::fs::write(
+                &path,
+                format!(
+                    "#!/bin/sh\necho run >> '{}'\necho 'handler does not exist' >&2\nexit 1\n",
+                    log.display()
+                ),
+            )
+            .unwrap();
+            let mut perms = std::fs::metadata(&path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&path, perms).unwrap();
+            let ts = Tailscale::new(path.to_string_lossy().to_string());
+            assert!(matches!(
+                ts.ensure_serve("http://127.0.0.1:7878", 443).await,
+                Err(TailscaleError::Command {
+                    subcommand: "serve",
+                    diagnostic: "no-existing-handler"
+                })
+            ));
+            assert_eq!(std::fs::read_to_string(&log).unwrap().lines().count(), 1);
+        }
+
+        #[tokio::test]
+        async fn spawn_retry_gives_up_on_persistent_failure() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("tailscale");
+            std::fs::write(&path, "not a script, no shebang\n").unwrap();
+            let mut perms = std::fs::metadata(&path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&path, perms).unwrap();
+            let ts = Tailscale::new(path.to_string_lossy().to_string());
+            assert!(matches!(
+                ts.read_status().await,
+                Err(TailscaleError::Command {
+                    subcommand: "status",
+                    diagnostic: "unknown"
+                })
             ));
         }
 
