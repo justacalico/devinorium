@@ -57,6 +57,23 @@ void main() {
     expect(manager.stopCalls, 2);
   });
 
+  test('concurrent shutdown calls share a single pass', () async {
+    final manager = _RecordingLocalManager()
+      ..stopGate = Completer<void>();
+    final state = AppState.test(localServerManager: manager);
+
+    final a = state.shutdown(
+      serverStopTimeout: const Duration(milliseconds: 50),
+    );
+    final b = state.shutdown();
+    await Future.wait([a, b]);
+
+    // One dispose pass ran; the manager saw its own two stop() calls from
+    // that single pass, not four.
+    expect(manager.disposeCalls, 1);
+    expect(manager.stopCalls, 2);
+  });
+
   test('a stuck server stop does not block shutdown', () async {
     final manager = _RecordingLocalManager()..stopGate = Completer<void>();
     final state = AppState.test(localServerManager: manager);

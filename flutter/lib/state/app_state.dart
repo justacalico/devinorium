@@ -367,10 +367,17 @@ class AppState extends AppStateBase
   /// Orderly shutdown for the desktop quit path: disposes stores, flushes
   /// composer drafts, and stops the bundled server so the child cannot
   /// outlive the app. Best-effort: a stuck or failing store must not keep
-  /// the window open, so every step is bounded or swallowed.
+  /// the window open, so every step is bounded or swallowed. Concurrent
+  /// callers share one pass so dispose() can never run twice.
   Future<void> shutdown({
     Duration serverStopTimeout = const Duration(seconds: 3),
-  }) async {
+  }) {
+    return _shutdownInFlight ??= _shutdown(serverStopTimeout);
+  }
+
+  Future<void>? _shutdownInFlight;
+
+  Future<void> _shutdown(Duration serverStopTimeout) async {
     try {
       dispose();
     } catch (_) {}
