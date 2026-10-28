@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.109.1 - 2026-10-28
+#### Bug Fixes
+- 避免两条退出路径并发执行清理逻辑 - (fb63482) - HttpAnimations
+- 修复并发停止服务器时停止标志被提前清除 - (417e34a) - HttpAnimations
+- 修复桌面端关闭窗口时进程崩溃 - (c9d4538) - HttpAnimations
+
+- - -
+
 ## v0.109.0 - 2026-10-25
 #### Features
 - Devin CLI 限流自动重试与倒计时 - (4101c36) - HttpAnimations
