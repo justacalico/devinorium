@@ -24,6 +24,11 @@ Future<void> initializeWindow() async {
   );
 
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
+    // Take over close handling before the window is ever shown: the native
+    // teardown path segfaults on exit (flutter/flutter#193742), so closes
+    // are prevented and installQuitHandler() turns them into a Dart-side
+    // shutdown + exit(0). Set here so no frame can be closed unguarded.
+    await windowManager.setPreventClose(true);
     await windowManager.show();
     await windowManager.focus();
   });

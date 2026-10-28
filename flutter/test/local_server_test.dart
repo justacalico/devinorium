@@ -1,8 +1,36 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:devinorium_frontend/services/local_server_io.dart';
 import 'package:devinorium_frontend/services/local_server_types.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+class _FakeProcess implements Process {
+  final Completer<int> exitCompleter = Completer<int>();
+  final StreamController<List<int>> _stdin = StreamController<List<int>>();
+  int killCalls = 0;
+
+  @override
+  Future<int> get exitCode => exitCompleter.future;
+
+  @override
+  bool kill([ProcessSignal signal = ProcessSignal.sigterm]) {
+    killCalls++;
+    return true;
+  }
+
+  @override
+  int get pid => 4242;
+
+  @override
+  Stream<List<int>> get stderr => const Stream<List<int>>.empty();
+
+  @override
+  IOSink get stdin => IOSink(_stdin);
+
+  @override
+  Stream<List<int>> get stdout => const Stream<List<int>>.empty();
+}
 
 void main() {
   group('LocalServerManager', () {
@@ -326,6 +354,37 @@ void main() {
         expect(await manager.ensureRunning(), isNull);
       }
       expect(spawns, 4);
+    });
+
+    test('a second stop while one is in flight cannot reopen spawning',
+        () async {
+      final dir = Directory.systemTemp.createTempSync('local_server_test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final procs = <_FakeProcess>[];
+      final manager = await fakeManager(
+        dir: dir,
+        spawnProcess:
+            (exe, args, {required environment, required workingDirectory}) async {
+          final proc = _FakeProcess();
+          procs.add(proc);
+          return proc;
+        },
+      );
+      addTearDown(manager.dispose);
+      expect(await manager.ensureRunning(), isNotNull);
+
+      final stop1 = manager.stop();
+      final stop2 = manager.stop();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      // The first stop still waits for a child that refuses to die; the
+      // second stop must share it instead of dropping _stopping early and
+      // letting a fresh spawn slip through.
+      expect(await manager.ensureRunning(), isNull);
+      expect(procs, hasLength(1));
+
+      procs.single.exitCompleter.complete(0);
+      await Future.wait([stop1, stop2]);
+      expect(procs.single.killCalls, 1);
     });
   });
 }
