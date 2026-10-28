@@ -83,6 +83,7 @@ class LocalServerManager implements LocalServerController {
   int _quickExits = 0;
   DateTime? _quickExitCooldownUntil;
   Future<LocalServerEndpoint?>? _starting;
+  Future<void>? _stopInFlight;
 
   /// Optional override for the data directory (default: per-user app data).
   final String? dataDir;
@@ -265,34 +266,44 @@ class LocalServerManager implements LocalServerController {
     return _endpoint;
   }
 
-  /// Stop the bundled server. Safe to call when nothing is running. A spawn
-  /// already in flight is waited out while [_stopping] is held, so its own
-  /// guards kill the fresh process instead of adopting it.
+  /// Stop the bundled server. Safe to call when nothing is running and safe
+  /// to call again while a stop is already running: concurrent callers share
+  /// the same in-flight stop so [_stopping] cannot drop early and let a
+  /// spawn sneak past the guards. A spawn already in flight is waited out
+  /// while [_stopping] is held, so its own guards kill the fresh process
+  /// instead of adopting it.
   @override
-  Future<void> stop() async {
+  Future<void> stop() {
+    final inFlight = _stopInFlight;
+    if (inFlight != null) return inFlight;
     _stopping = true;
-    try {
-      final inFlight = _starting;
-      if (inFlight != null) {
-        try {
-          await inFlight;
-        } catch (_) {}
-      }
-      final proc = _process;
-      _process = null;
-      _endpoint = null;
-      _exited = true;
-      if (proc == null) return;
-      proc.kill();
-      try {
-        await proc.exitCode.timeout(const Duration(seconds: 5));
-      } catch (_) {
-        // Already dead or refusing to die; nothing more to do.
-      }
-      await _deleteEndpointFile();
-    } finally {
+    final future = _stop();
+    _stopInFlight = future;
+    return future.whenComplete(() {
+      _stopInFlight = null;
       _stopping = false;
+    });
+  }
+
+  Future<void> _stop() async {
+    final inFlight = _starting;
+    if (inFlight != null) {
+      try {
+        await inFlight;
+      } catch (_) {}
     }
+    final proc = _process;
+    _process = null;
+    _endpoint = null;
+    _exited = true;
+    if (proc == null) return;
+    proc.kill();
+    try {
+      await proc.exitCode.timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // Already dead or refusing to die; nothing more to do.
+    }
+    await _deleteEndpointFile();
   }
 
   @override
