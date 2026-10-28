@@ -1,3 +1,5 @@
+import 'dart:ui' show AppExitResponse;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -5,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'l10n/l10n.dart';
 import 'utils/debug_log.dart';
 import 'services/pwa_chrome.dart';
+import 'services/quit_handler.dart';
 import 'services/window_service.dart';
 import 'state/app_state.dart';
 import 'state/zoom_controller.dart';
@@ -30,6 +33,7 @@ Future<void> main() async {
   appState.bootstrap().catchError((Object e, StackTrace _) {
     debugLogFailure('main.bootstrap', e);
   });
+  await installQuitHandler(appState.shutdown);
 
   runApp(
     DevinoriumApp(
@@ -86,6 +90,16 @@ class _DevinoriumAppState extends State<DevinoriumApp>
         previous != AppLifecycleState.resumed) {
       widget.appState.handleAppResumed();
     }
+  }
+
+  @override
+  Future<AppExitResponse> didRequestAppExit() async {
+    // Quit gestures that bypass the window close path (Cmd+Q on macOS) land
+    // here instead; still run the orderly cleanup before exiting.
+    try {
+      await widget.appState.shutdown().timeout(const Duration(seconds: 5));
+    } catch (_) {}
+    return AppExitResponse.exit;
   }
 
   @override

@@ -364,6 +364,24 @@ class AppState extends AppStateBase
     _skillsThreadId = _activeThreadId;
   }
 
+  /// Orderly shutdown for the desktop quit path: disposes stores, flushes
+  /// composer drafts, and stops the bundled server so the child cannot
+  /// outlive the app. Best-effort: a stuck or failing store must not keep
+  /// the window open, so every step is bounded or swallowed.
+  Future<void> shutdown({
+    Duration serverStopTimeout = const Duration(seconds: 3),
+  }) async {
+    try {
+      dispose();
+    } catch (_) {}
+    try {
+      await _persistComposerDrafts();
+    } catch (_) {}
+    try {
+      await localServerManager.stop().timeout(serverStopTimeout);
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _versionChecker?.close();
