@@ -53,6 +53,34 @@ mixin GitPanelStore on AppStateBase {
   @override
   String _gitHistoryError = '';
 
+  // Remote (git host) sections state. Loaded once per scope and on explicit
+  // reloads only — these calls shell out to `glab` and hit the network, so
+  // the 5-second refresh tick must not fire them.
+  @override
+  GitRemoteInfo? _gitPanelRemote;
+  @override
+  bool _gitRemoteLoaded = false;
+  @override
+  bool _gitRemoteLoading = false;
+  @override
+  int _gitRemoteSeq = 0;
+  @override
+  List<MergeRequestLink> _gitMergeRequests = [];
+  @override
+  bool _gitMrsOpen = true;
+  @override
+  bool _gitMrsLoading = false;
+  @override
+  String _gitMrsError = '';
+  @override
+  List<GitIssueSummary> _gitIssues = [];
+  @override
+  bool _gitIssuesOpen = true;
+  @override
+  bool _gitIssuesLoading = false;
+  @override
+  String _gitIssuesError = '';
+
   @override
   bool get gitPanelOpen => _gitPanelOpen;
   @override
@@ -96,6 +124,27 @@ mixin GitPanelStore on AppStateBase {
   @override
   String get gitHistoryError => _gitHistoryError;
 
+  @override
+  GitRemoteInfo? get gitPanelRemote => _gitPanelRemote;
+  @override
+  bool get gitRemoteLoading => _gitRemoteLoading;
+  @override
+  List<MergeRequestLink> get gitMergeRequests => _gitMergeRequests;
+  @override
+  bool get gitMrsOpen => _gitMrsOpen;
+  @override
+  bool get gitMrsLoading => _gitMrsLoading;
+  @override
+  String get gitMrsError => _gitMrsError;
+  @override
+  List<GitIssueSummary> get gitIssues => _gitIssues;
+  @override
+  bool get gitIssuesOpen => _gitIssuesOpen;
+  @override
+  bool get gitIssuesLoading => _gitIssuesLoading;
+  @override
+  String get gitIssuesError => _gitIssuesError;
+
   static String gitDiffKey(bool staged, String path) =>
       '${staged ? 's' : 'u'}:$path';
 
@@ -115,9 +164,11 @@ mixin GitPanelStore on AppStateBase {
     _gitPanelOpen = true;
     _filesPanelOpen = false;
     _gitPanelError = '';
-    // The history section opens with the panel; the forced reload below
-    // refetches its first page for the current scope.
+    // The history and remote sections open with the panel; the forced
+    // reload below refetches them for the current scope.
     _gitHistoryOpen = true;
+    _gitMrsOpen = true;
+    _gitIssuesOpen = true;
     notifyListeners();
     await _loadGitPanel(force: true);
   }
@@ -158,6 +209,7 @@ mixin GitPanelStore on AppStateBase {
       _gitPanelLoading = false;
       _clearGitDiffs();
       _clearGitHistory();
+      _clearGitRemote();
       notifyListeners();
       return;
     }
@@ -175,6 +227,7 @@ mixin GitPanelStore on AppStateBase {
       _gitPanelError = '';
       _clearGitDiffs();
       _clearGitHistory();
+      _clearGitRemote();
     }
     if (force || scopeChanged || _gitPanelChanges == null) {
       _gitPanelLoading = true;
@@ -189,6 +242,15 @@ mixin GitPanelStore on AppStateBase {
       _gitHistoryError = '';
       _gitHistorySeq++;
       _gitHistoryLoading = false;
+      // Same refill contract as history: the loaded lists stay visible
+      // until the new fetch lands.
+      _gitRemoteLoaded = false;
+      _gitMrsError = '';
+      _gitIssuesError = '';
+      _gitRemoteSeq++;
+      _gitRemoteLoading = false;
+      _gitMrsLoading = false;
+      _gitIssuesLoading = false;
     }
     _gitPanelUnsupported = false;
     notifyListeners();
@@ -247,6 +309,14 @@ mixin GitPanelStore on AppStateBase {
         !_gitHistoryLoading &&
         _gitHistoryError.isEmpty) {
       unawaited(_loadGitHistory());
+    }
+    // The remote sections load once per scope and on explicit reloads;
+    // the periodic tick passes loaded lists through untouched.
+    if (_gitPanelOpen &&
+        _gitPanelChanges != null &&
+        !_gitRemoteLoaded &&
+        !_gitRemoteLoading) {
+      unawaited(_loadGitRemote());
     }
     _gitPanelLoading = false;
     notifyListeners();
@@ -556,4 +626,123 @@ mixin GitPanelStore on AppStateBase {
   @override
   Future<bool> gitPanelPush() =>
       _runGitAction((pid, tid) => api.gitPush(pid, threadId: tid));
+
+  // ---- Remote sections (git host: GitLab) ----
+
+  /// Resolve the scope's remote and, when it is GitLab, fill the merge
+  /// request and issue lists. A null or non-GitLab remote — or a failed
+  /// probe — simply hides the sections; they only exist for supported
+  /// hosts.
+  Future<void> _loadGitRemote() async {
+    final projectId = _gitPanelProjectId;
+    if (projectId == null || _gitRemoteLoading) return;
+    final scopeKey = _gitPanelScopeKey;
+    final seq = ++_gitRemoteSeq;
+    _gitRemoteLoading = true;
+    _gitMrsError = '';
+    _gitIssuesError = '';
+    notifyListeners();
+    try {
+      final remote = await api.gitRemote(
+        projectId,
+        threadId: gitApiThreadId,
+      );
+      if (seq != _gitRemoteSeq || _gitPanelScopeKey != scopeKey) return;
+      _gitPanelRemote = remote;
+      _gitRemoteLoaded = true;
+      if (remote == null || remote.provider != 'gitlab') {
+        _gitMergeRequests = [];
+        _gitIssues = [];
+        return;
+      }
+      await Future.wait([
+        _loadGitMergeRequests(seq, scopeKey),
+        _loadGitIssues(seq, scopeKey),
+      ]);
+    } catch (_) {
+      // A failed probe hides the sections like a missing remote would;
+      // the next explicit reload retries.
+      if (seq != _gitRemoteSeq || _gitPanelScopeKey != scopeKey) return;
+      _gitPanelRemote = null;
+      _gitMergeRequests = [];
+      _gitIssues = [];
+      _gitRemoteLoaded = true;
+    } finally {
+      if (seq == _gitRemoteSeq) _gitRemoteLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _loadGitMergeRequests(int seq, String? scopeKey) async {
+    final projectId = _gitPanelProjectId;
+    if (projectId == null) return;
+    _gitMrsLoading = true;
+    notifyListeners();
+    try {
+      final mrs = await api.gitMergeRequests(
+        projectId,
+        threadId: gitApiThreadId,
+      );
+      if (seq != _gitRemoteSeq || _gitPanelScopeKey != scopeKey) return;
+      _gitMergeRequests = mrs;
+      _gitMrsError = '';
+    } catch (e) {
+      if (seq != _gitRemoteSeq || _gitPanelScopeKey != scopeKey) return;
+      _gitMergeRequests = [];
+      _gitMrsError = '$e';
+    } finally {
+      if (seq == _gitRemoteSeq) _gitMrsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _loadGitIssues(int seq, String? scopeKey) async {
+    final projectId = _gitPanelProjectId;
+    if (projectId == null) return;
+    _gitIssuesLoading = true;
+    notifyListeners();
+    try {
+      final issues = await api.gitIssues(
+        projectId,
+        threadId: gitApiThreadId,
+      );
+      if (seq != _gitRemoteSeq || _gitPanelScopeKey != scopeKey) return;
+      _gitIssues = issues;
+      _gitIssuesError = '';
+    } catch (e) {
+      if (seq != _gitRemoteSeq || _gitPanelScopeKey != scopeKey) return;
+      _gitIssues = [];
+      _gitIssuesError = '$e';
+    } finally {
+      if (seq == _gitRemoteSeq) _gitIssuesLoading = false;
+      notifyListeners();
+    }
+  }
+
+  @override
+  void toggleGitMrsSection() {
+    _gitMrsOpen = !_gitMrsOpen;
+    notifyListeners();
+  }
+
+  @override
+  void toggleGitIssuesSection() {
+    _gitIssuesOpen = !_gitIssuesOpen;
+    notifyListeners();
+  }
+
+  void _clearGitRemote() {
+    _gitPanelRemote = null;
+    _gitMergeRequests = [];
+    _gitIssues = [];
+    _gitMrsError = '';
+    _gitIssuesError = '';
+    _gitRemoteLoaded = false;
+    _gitRemoteLoading = false;
+    _gitMrsLoading = false;
+    _gitIssuesLoading = false;
+    // Invalidate any in-flight remote load so it cannot write into the
+    // new scope.
+    _gitRemoteSeq++;
+  }
 }

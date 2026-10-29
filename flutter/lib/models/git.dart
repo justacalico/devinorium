@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show listEquals;
+
 class GitBranch {
   final String name;
   final String refname;
@@ -403,4 +405,92 @@ class MergeRequestLink {
     webUrl,
     draft,
   );
+}
+
+/// The git host a repository's remote points at, as returned by
+/// `GET /api/projects/:id/git/remote`. `provider` is `gitlab` today; the
+/// field lets the panel gate host-specific sections and grow later.
+class GitRemoteInfo {
+  final String provider;
+  final String hostname;
+  final String projectPath;
+  final String webUrl;
+
+  const GitRemoteInfo({
+    required this.provider,
+    required this.hostname,
+    required this.projectPath,
+    required this.webUrl,
+  });
+
+  factory GitRemoteInfo.fromJson(Map<String, dynamic> j) => GitRemoteInfo(
+    provider: j['provider'] as String? ?? '',
+    hostname: j['hostname'] as String? ?? '',
+    projectPath: j['project_path'] as String? ?? '',
+    webUrl: j['web_url'] as String? ?? '',
+  );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! GitRemoteInfo) return false;
+    return provider == other.provider &&
+        hostname == other.hostname &&
+        projectPath == other.projectPath &&
+        webUrl == other.webUrl;
+  }
+
+  @override
+  int get hashCode => Object.hash(provider, hostname, projectPath, webUrl);
+}
+
+/// An open issue in the repo's GitLab project, as returned by
+/// `GET /api/projects/:id/git/issues`.
+class GitIssueSummary {
+  final int iid;
+  final String title;
+  final String state;
+  final String webUrl;
+  final List<String> labels;
+
+  const GitIssueSummary({
+    required this.iid,
+    required this.title,
+    required this.state,
+    required this.webUrl,
+    this.labels = const [],
+  });
+
+  factory GitIssueSummary.fromJson(Map<String, dynamic> j) {
+    final raw = j['iid'];
+    final iid = raw is num
+        ? raw.toInt()
+        : raw is String
+        ? int.tryParse(raw) ?? 0
+        : 0;
+    return GitIssueSummary(
+      iid: iid,
+      title: j['title'] as String? ?? '',
+      state: j['state'] as String? ?? '',
+      webUrl: j['web_url'] as String? ?? '',
+      labels: (j['labels'] as List<dynamic>? ?? [])
+          .whereType<String>()
+          .toList(),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! GitIssueSummary) return false;
+    return iid == other.iid &&
+        title == other.title &&
+        state == other.state &&
+        webUrl == other.webUrl &&
+        listEquals(labels, other.labels);
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(iid, title, state, webUrl, Object.hashAll(labels));
 }

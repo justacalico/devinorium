@@ -31,6 +31,15 @@ typedef _GitPanelModel = ({
   bool historyLoading,
   bool historyHasMore,
   String historyError,
+  GitRemoteInfo? remote,
+  List<MergeRequestLink> mergeRequests,
+  bool mrsOpen,
+  bool mrsLoading,
+  String mrsError,
+  List<GitIssueSummary> issues,
+  bool issuesOpen,
+  bool issuesLoading,
+  String issuesError,
 });
 
 /// The sidebar Git panel: working-tree changes, staging, commit, pull, push.
@@ -100,6 +109,15 @@ class _GitPanelState extends State<GitPanel> {
         historyLoading: s.gitHistoryLoading,
         historyHasMore: s.gitHistoryHasMore,
         historyError: s.gitHistoryError,
+        remote: s.gitPanelRemote,
+        mergeRequests: s.gitMergeRequests,
+        mrsOpen: s.gitMrsOpen,
+        mrsLoading: s.gitMrsLoading,
+        mrsError: s.gitMrsError,
+        issues: s.gitIssues,
+        issuesOpen: s.gitIssuesOpen,
+        issuesLoading: s.gitIssuesLoading,
+        issuesError: s.gitIssuesError,
       ),
       builder: (context, model, _) {
         final showPanel =
@@ -295,6 +313,10 @@ class _GitPanelState extends State<GitPanel> {
             ),
           ),
         _historySection(context, state, model, l, theme),
+        if (model.remote != null && model.remote!.provider == 'gitlab') ...[
+          _mergeRequestsSection(context, state, model, l, theme),
+          _issuesSection(context, state, model, l, theme),
+        ],
       ],
     );
   }
@@ -933,6 +955,259 @@ class _GitPanelState extends State<GitPanel> {
             ),
           ),
       ],
+    );
+  }
+
+  /// The repo's open merge requests on its GitLab remote. Tapping a row
+  /// opens the existing merge request dialog via [AppState.openLink].
+  Widget _mergeRequestsSection(
+    BuildContext context,
+    AppState state,
+    _GitPanelModel model,
+    AppLocalizations l,
+    ThemeData theme,
+  ) {
+    final open = model.mrsOpen;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: state.toggleGitMrsSection,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 2),
+            child: Row(
+              children: [
+                Icon(
+                  open ? Icons.expand_more : Icons.chevron_right,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                Expanded(
+                  child: Text(
+                    '${l.mergeRequests} (${model.mergeRequests.length})'
+                        .toUpperCase(),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                if (open && model.mrsLoading)
+                  const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (open) ...[
+          if (model.mrsError.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+              child: Text(
+                model.mrsError,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ),
+          for (final mr in model.mergeRequests)
+            _mergeRequestRow(context, state, mr, l, theme),
+          if (!model.mrsLoading &&
+              model.mergeRequests.isEmpty &&
+              model.mrsError.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+              child: Text(
+                l.noMergeRequests,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _mergeRequestRow(
+    BuildContext context,
+    AppState state,
+    MergeRequestLink mr,
+    AppLocalizations l,
+    ThemeData theme,
+  ) {
+    return InkWell(
+      onTap: () => unawaited(state.openLink(mr.webUrl)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  '!${mr.iid}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontFamily: 'monospace',
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    mr.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                if (mr.draft)
+                  Text(
+                    l.draft,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 1),
+            Text(
+              '${mr.sourceBranch} → ${mr.targetBranch}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The repo's open issues on its GitLab remote. Tapping a row opens the
+  /// existing issue dialog via [AppState.openLink].
+  Widget _issuesSection(
+    BuildContext context,
+    AppState state,
+    _GitPanelModel model,
+    AppLocalizations l,
+    ThemeData theme,
+  ) {
+    final open = model.issuesOpen;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: state.toggleGitIssuesSection,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 2),
+            child: Row(
+              children: [
+                Icon(
+                  open ? Icons.expand_more : Icons.chevron_right,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                Expanded(
+                  child: Text(
+                    '${l.issues} (${model.issues.length})'.toUpperCase(),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                if (open && model.issuesLoading)
+                  const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (open) ...[
+          if (model.issuesError.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+              child: Text(
+                model.issuesError,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ),
+          for (final issue in model.issues)
+            _issueRow(context, state, issue, theme),
+          if (!model.issuesLoading &&
+              model.issues.isEmpty &&
+              model.issuesError.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+              child: Text(
+                l.noIssues,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _issueRow(
+    BuildContext context,
+    AppState state,
+    GitIssueSummary issue,
+    ThemeData theme,
+  ) {
+    return InkWell(
+      onTap: () => unawaited(state.openLink(issue.webUrl)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  '#${issue.iid}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontFamily: 'monospace',
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    issue.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+            if (issue.labels.isNotEmpty) ...[
+              const SizedBox(height: 1),
+              Text(
+                issue.labels.join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 

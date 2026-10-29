@@ -1050,6 +1050,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noCommits => '还没有提交';
 
   @override
+  String get mergeRequests => '合并请求';
+
+  @override
+  String get noMergeRequests => '没有打开的合并请求';
+
+  @override
+  String get issues => '议题';
+
+  @override
+  String get noIssues => '没有打开的议题';
+
+  @override
   String get noDiffAvailable => '无可用差异预览';
 
   @override

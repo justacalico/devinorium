@@ -12306,6 +12306,185 @@ async fn git_merge_request_requires_branch_or_iid() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+fn write_fake_glab_with_remote_lists(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+set -e
+if [ "$1" = "api" ]; then
+  path="$2"
+  case "$path" in
+    *"merge_requests?state=opened"*)
+      printf '[{"iid":12,"title":"Add feature","state":"opened","source_branch":"feature/branch","target_branch":"main","web_url":"https://gitlab.example.com/group/project/-/merge_requests/12","draft":false},{"iid":9,"title":"Draft: WIP","state":"opened","source_branch":"wip","target_branch":"main","web_url":"https://gitlab.example.com/group/project/-/merge_requests/9","draft":true}]\n'
+      exit 0
+      ;;
+    *"issues?state=opened"*)
+      printf '[{"iid":5,"title":"Something broke","state":"opened","web_url":"https://gitlab.example.com/group/project/-/issues/5","labels":["bug","backend"]}]\n'
+      exit 0
+      ;;
+  esac
+  printf '{"host":"%s","path":"%s"}\n' "$3" "$path"
+  exit 0
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+#[tokio::test]
+async fn git_remote_returns_gitlab_remote() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = make_gitlab_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/remote"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["provider"], "gitlab");
+    assert_eq!(v["hostname"], "gitlab.example.com");
+    assert_eq!(v["project_path"], "group/project");
+    assert_eq!(v["web_url"], "https://gitlab.example.com/group/project");
+}
+
+#[tokio::test]
+async fn git_remote_404_when_no_remote_configured() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/remote"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn git_merge_requests_lists_open_merge_requests() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab_with_remote_lists(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+    let app = devinorium::build_app(state);
+
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = make_gitlab_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/merge-requests"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let list = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    assert_eq!(list.len(), 2);
+    assert_eq!(list[0]["iid"], 12);
+    assert_eq!(list[0]["title"], "Add feature");
+    assert_eq!(list[0]["source_branch"], "feature/branch");
+    assert_eq!(list[1]["iid"], 9);
+    assert_eq!(list[1]["draft"], true);
+}
+
+#[tokio::test]
+async fn git_issues_lists_open_issues() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab_with_remote_lists(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+    let app = devinorium::build_app(state);
+
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = make_gitlab_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/issues"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let list = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["iid"], 5);
+    assert_eq!(list[0]["title"], "Something broke");
+    assert_eq!(
+        list[0]["web_url"],
+        "https://gitlab.example.com/group/project/-/issues/5"
+    );
+    assert_eq!(list[0]["labels"], serde_json::json!(["bug", "backend"]));
+}
+
+#[tokio::test]
+async fn git_merge_requests_404_when_glab_missing() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, None));
+    let app = devinorium::build_app(state);
+
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = make_gitlab_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/merge-requests"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
 #[tokio::test]
 async fn thread_link_merge_request_validates_and_persists() {
     let (app, _db) = make_app().await;
