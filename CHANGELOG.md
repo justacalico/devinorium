@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.110.0 - 2026-10-29
+#### Features
+- Git 面板新增 GitLab 远程区块 - (6f1e064) - HttpAnimations
+
+- - -
+
 ## v0.109.1 - 2026-10-28
 #### Bug Fixes
 - 避免两条退出路径并发执行清理逻辑 - (fb63482) - HttpAnimations
