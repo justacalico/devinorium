@@ -1105,6 +1105,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noCommits => 'No commits yet';
 
   @override
+  String get mergeRequests => 'Merge requests';
+
+  @override
+  String get noMergeRequests => 'No open merge requests';
+
+  @override
+  String get issues => 'Issues';
+
+  @override
+  String get noIssues => 'No open issues';
+
+  @override
   String get noDiffAvailable => 'No diff preview available';
 
   @override

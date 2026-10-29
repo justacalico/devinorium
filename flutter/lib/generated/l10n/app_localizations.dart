@@ -1976,6 +1976,30 @@ abstract class AppLocalizations {
   /// **'No commits yet'**
   String get noCommits;
 
+  /// No description provided for @mergeRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge requests'**
+  String get mergeRequests;
+
+  /// No description provided for @noMergeRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'No open merge requests'**
+  String get noMergeRequests;
+
+  /// No description provided for @issues.
+  ///
+  /// In en, this message translates to:
+  /// **'Issues'**
+  String get issues;
+
+  /// No description provided for @noIssues.
+  ///
+  /// In en, this message translates to:
+  /// **'No open issues'**
+  String get noIssues;
+
   /// No description provided for @noDiffAvailable.
   ///
   /// In en, this message translates to:

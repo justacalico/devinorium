@@ -341,6 +341,52 @@ class ApiService {
     }
   }
 
+  /// The git host the repo's remote points at, or `null` when the scope is
+  /// not a repository, has no remote, or the remote is not a supported
+  /// host — all "no remote panel" states rather than errors.
+  Future<GitRemoteInfo?> gitRemote(int projectId, {String? threadId}) async {
+    final params = <String, String>{};
+    if (threadId != null && threadId.isNotEmpty) params['thread_id'] = threadId;
+    final uri = _buildPath('/api/projects/$projectId/git/remote', params);
+    try {
+      final j = await _client.get(uri);
+      if (j.isEmpty) return null;
+      return GitRemoteInfo.fromJson(j);
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  /// The repo's open merge requests on its git host, for the git panel's
+  /// remote sections.
+  Future<List<MergeRequestLink>> gitMergeRequests(
+    int projectId, {
+    String? threadId,
+  }) async {
+    final params = <String, String>{};
+    if (threadId != null && threadId.isNotEmpty) params['thread_id'] = threadId;
+    final uri = _buildPath(
+      '/api/projects/$projectId/git/merge-requests',
+      params,
+    );
+    final list = await _client.getList(uri);
+    return list.map(MergeRequestLink.fromJson).toList();
+  }
+
+  /// The repo's open issues on its git host, for the git panel's remote
+  /// sections.
+  Future<List<GitIssueSummary>> gitIssues(
+    int projectId, {
+    String? threadId,
+  }) async {
+    final params = <String, String>{};
+    if (threadId != null && threadId.isNotEmpty) params['thread_id'] = threadId;
+    final uri = _buildPath('/api/projects/$projectId/git/issues', params);
+    final list = await _client.getList(uri);
+    return list.map(GitIssueSummary.fromJson).toList();
+  }
+
   // ---- Git connections ----
 
   Future<List<GitConnection>> listGitConnections() async {

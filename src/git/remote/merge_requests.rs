@@ -101,6 +101,32 @@ impl GitRemoteService {
         }
     }
 
+    /// List a project's open merge requests, most recently updated first.
+    pub async fn gitlab_merge_requests(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        per_page: usize,
+    ) -> Result<Vec<GitLabMergeRequestSummary>, RemoteError> {
+        if project_path.is_empty() {
+            return Err(RemoteError::StatusFailed("project is required".into()));
+        }
+
+        let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
+        let path = format!(
+            "projects/{encoded_project}/merge_requests\
+             ?state=opened&order_by=updated_at&per_page={per_page}"
+        );
+
+        let output = self.gitlab_api(user_id, hostname, &path).await?;
+        let list: Vec<serde_json::Value> = serde_json::from_str(&output).map_err(|e| {
+            RemoteError::StatusFailed(format!("gitlab returned invalid merge request json: {e}"))
+        })?;
+
+        Ok(list.into_iter().map(parse_merge_request_summary).collect())
+    }
+
     /// Find the open merge request whose source branch matches [branch] in the
     /// given GitLab project. Returns the first match, or `None` if there is no
     /// open merge request for that branch.

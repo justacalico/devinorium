@@ -78,6 +78,27 @@ class _Harness {
         if (path == '/api/projects/1/git/commit') {
           return _json(200, {'sha': 'abc123', 'subject': 'wip'});
         }
+        if (path == '/api/projects/1/git/remote') {
+          final r = remoteResponse;
+          if (r == null) {
+            return _json(404, {
+              'error': 'project remote is not a GitLab repository',
+            });
+          }
+          return _json(200, r);
+        }
+        if (path == '/api/projects/1/git/merge-requests') {
+          if (mrsStatus != 200) {
+            return _json(mrsStatus, {'error': 'mrs failed'});
+          }
+          return _json(200, mrsResponse);
+        }
+        if (path == '/api/projects/1/git/issues') {
+          if (issuesStatus != 200) {
+            return _json(issuesStatus, {'error': 'issues failed'});
+          }
+          return _json(200, issuesResponse);
+        }
         return _json(404, {'error': 'unexpected $path'});
       }),
     ),
@@ -85,6 +106,16 @@ class _Harness {
 
   Map<String, dynamic> changesResponse;
   Map<String, dynamic> repoResponse;
+
+  /// `/git/remote` body; `null` answers 404, which is also how a repo with
+  /// no remote or a non-GitLab remote comes back.
+  Map<String, dynamic>? remoteResponse;
+
+  /// `/git/merge-requests` and `/git/issues` bodies plus status overrides.
+  List<Map<String, dynamic>> mrsResponse;
+  List<Map<String, dynamic>> issuesResponse;
+  int mrsStatus = 200;
+  int issuesStatus = 200;
 
   /// The whole `{"diff": ...}` body for `/git/diff`; `{'diff': null}` means
   /// "nothing renderable".
@@ -106,6 +137,9 @@ class _Harness {
     Map<String, dynamic>? repo,
     Map<String, dynamic>? diff,
     Map<String, dynamic> Function(Uri url)? log,
+    this.remoteResponse,
+    this.mrsResponse = const [],
+    this.issuesResponse = const [],
   }) : changesResponse = changes ?? _changes(),
        repoResponse = repo ?? _repoInfo(),
        diffResponse = diff ?? const {'diff': null},
@@ -127,6 +161,53 @@ Map<String, dynamic> _commit(String sha, String subject, {String body = ''}) =>
       'timestamp': 1700000000,
       'refs': '',
     };
+
+Map<String, dynamic> _gitlabRemote() => {
+  'provider': 'gitlab',
+  'hostname': 'gitlab.example.com',
+  'project_path': 'group/project',
+  'web_url': 'https://gitlab.example.com/group/project',
+};
+
+Map<String, dynamic> _mrJson(
+  int iid,
+  String title, {
+  bool draft = false,
+}) => {
+  'iid': iid,
+  'title': title,
+  'state': 'opened',
+  'source_branch': 'feature/$iid',
+  'target_branch': 'main',
+  'web_url': 'https://gitlab.example.com/group/project/-/merge_requests/$iid',
+  'draft': draft,
+};
+
+Map<String, dynamic> _issueJson(
+  int iid,
+  String title, {
+  List<String> labels = const [],
+}) => {
+  'iid': iid,
+  'title': title,
+  'state': 'opened',
+  'web_url': 'https://gitlab.example.com/group/project/-/issues/$iid',
+  'labels': labels,
+};
+
+/// Waits for the panel's remote load, which fires in the background after
+/// the change list lands.
+Future<void> _settleRemote(AppState state) async {
+  for (var i = 0; i < 200 && state.gitRemoteLoading; i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+  }
+  // The list fetches run after the remote probe; give them a turn too.
+  for (var i = 0;
+      i < 200 && (state.gitMrsLoading || state.gitIssuesLoading);
+      i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+  }
+}
 
 AppState _state(ApiService api, {Thread? thread}) => AppState.test(
   api: api,
@@ -955,6 +1036,268 @@ void main() {
       expect(state.gitHistory, hasLength(1));
       expect(state.gitHistoryError, isEmpty);
     });
+
+    test('a gitlab remote fills merge requests and issues', () async {
+      final h = _Harness(
+        remoteResponse: _gitlabRemote(),
+        mrsResponse: [
+          _mrJson(12, 'Add feature'),
+          _mrJson(9, 'WIP', draft: true),
+        ],
+        issuesResponse: [
+          _issueJson(5, 'Something broke', labels: ['bug', 'backend']),
+        ],
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+      await _settleRemote(state);
+
+      expect(state.gitPanelRemote?.provider, 'gitlab');
+      expect(state.gitPanelRemote?.hostname, 'gitlab.example.com');
+      expect(state.gitMergeRequests, hasLength(2));
+      expect(state.gitMergeRequests.first.iid, 12);
+      expect(state.gitMergeRequests.last.draft, isTrue);
+      expect(state.gitIssues, hasLength(1));
+      expect(state.gitIssues.first.iid, 5);
+      expect(state.gitIssues.first.labels, ['bug', 'backend']);
+      expect(state.gitMrsError, isEmpty);
+      expect(state.gitIssuesError, isEmpty);
+    });
+
+    test('no remote or a non-gitlab remote hides the sections', () async {
+      // The default harness answers /git/remote with a 404 — no remote,
+      // not a repo, or a host the backend does not support.
+      final h = _Harness();
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+      await _settleRemote(state);
+
+      expect(state.gitPanelRemote, isNull);
+      expect(state.gitMergeRequests, isEmpty);
+      expect(state.gitIssues, isEmpty);
+      expect(
+        h.requests.where((r) => r.url.path.endsWith('/git/merge-requests')),
+        isEmpty,
+      );
+      expect(
+        h.requests.where((r) => r.url.path.endsWith('/git/issues')),
+        isEmpty,
+      );
+    });
+
+    test('a failed list load surfaces in its section error', () async {
+      final h = _Harness(remoteResponse: _gitlabRemote())..mrsStatus = 500;
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+      await _settleRemote(state);
+
+      expect(state.gitPanelRemote?.provider, 'gitlab');
+      expect(state.gitMergeRequests, isEmpty);
+      expect(state.gitMrsError, contains('mrs failed'));
+      // The issues list still loaded on its own path.
+      expect(state.gitIssues, isEmpty);
+      expect(state.gitIssuesError, isEmpty);
+    });
+
+    test('the refresh tick skips remote calls; a reload refetches', () async {
+      final h = _Harness(
+        remoteResponse: _gitlabRemote(),
+        mrsResponse: [_mrJson(12, 'Add feature')],
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+      await _settleRemote(state);
+
+      var remoteCalls = h.requests
+          .where((r) => r.url.path.endsWith('/git/remote'))
+          .length;
+      var mrsCalls = h.requests
+          .where((r) => r.url.path.endsWith('/git/merge-requests'))
+          .length;
+      expect(remoteCalls, 1);
+      expect(mrsCalls, 1);
+
+      // The periodic refresh must not shell out to glab every tick.
+      await state.refreshGitPanel();
+      await _settleRemote(state);
+      expect(
+        h.requests.where((r) => r.url.path.endsWith('/git/remote')).length,
+        remoteCalls,
+      );
+      expect(
+        h.requests
+            .where((r) => r.url.path.endsWith('/git/merge-requests'))
+            .length,
+        mrsCalls,
+      );
+
+      // An explicit reload does refresh the remote lists.
+      await state.reloadGitChanges();
+      await _settleRemote(state);
+      expect(
+        h.requests.where((r) => r.url.path.endsWith('/git/remote')).length,
+        remoteCalls + 1,
+      );
+      expect(
+        h.requests
+            .where((r) => r.url.path.endsWith('/git/merge-requests'))
+            .length,
+        mrsCalls + 1,
+      );
+    });
+
+    test('remote lists send thread_id in a worktree scope', () async {
+      final h = _Harness(
+        repo: _repoInfo(branch: 'wt-branch'),
+        changes: _changes(branch: 'wt-branch'),
+        remoteResponse: _gitlabRemote(),
+        mrsResponse: [_mrJson(12, 'Add feature')],
+        issuesResponse: [_issueJson(5, 'Bug')],
+      );
+      final thread = Thread(
+        id: 't1',
+        title: 't',
+        projectId: 1,
+        model: 'm',
+        permissionMode: 'normal',
+        envMode: 'worktree',
+        worktreePath: '/repo/wt',
+        createdAt: '',
+        updatedAt: '',
+      );
+      final state = _state(h.api, thread: thread);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+      await _settleRemote(state);
+
+      expect(
+        h
+            .lastTo('/api/projects/1/git/remote')
+            .url
+            .queryParameters['thread_id'],
+        't1',
+      );
+      expect(
+        h.lastTo('/api/projects/1/git/merge-requests')
+            .url
+            .queryParameters['thread_id'],
+        't1',
+      );
+      expect(
+        h.lastTo('/api/projects/1/git/issues')
+            .url
+            .queryParameters['thread_id'],
+        't1',
+      );
+    });
+
+    test(
+      'a remote load finishing after a scope change is dropped',
+      () async {
+        final wt = Thread(
+          id: 't1',
+          title: 't',
+          projectId: 1,
+          model: 'm',
+          permissionMode: 'normal',
+          envMode: 'worktree',
+          worktreePath: '/repo/wt',
+          createdAt: '',
+          updatedAt: '',
+        );
+        final remoteGate = Completer<http.Response>();
+        final mrsGate = Completer<http.Response>();
+        var remoteCalls = 0;
+        var mrsCalls = 0;
+        final api = ApiService(
+          client: ApiClient.withClient(
+            MockClient((req) async {
+              final path = req.url.path;
+              if (path == '/api/projects/1/git/changes') {
+                return _json(200, _changes());
+              }
+              if (path == '/api/projects/1/git') {
+                return _json(200, _repoInfo());
+              }
+              if (path == '/api/projects/1/git/log') {
+                return _json(200, {
+                  'commits': <Map<String, dynamic>>[],
+                  'has_more': false,
+                });
+              }
+              if (path == '/api/projects/1/git/remote') {
+                remoteCalls++;
+                // The first probe stays in flight until the scope moves.
+                if (remoteCalls == 1) return remoteGate.future;
+                return _json(404, {
+                  'error': 'project remote is not a GitLab repository',
+                });
+              }
+              if (path == '/api/projects/1/git/merge-requests') {
+                mrsCalls++;
+                if (mrsCalls == 1) return mrsGate.future;
+                return _json(200, <Map<String, dynamic>>[]);
+              }
+              if (path == '/api/projects/1/git/issues') {
+                return _json(200, <Map<String, dynamic>>[]);
+              }
+              return _json(404, {'error': 'unexpected $path'});
+            }),
+          ),
+        );
+        final state = AppState.test(
+          api: api,
+          projects: [
+            Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+          ],
+          activeProjectId: 1,
+          threads: [wt],
+        );
+        addTearDown(state.dispose);
+        await state.openGitPanel();
+        expect(state.gitPanelScopeKey, 'project:1');
+
+        // The panel open already started the first probe, still held by
+        // the gate. Move the scope, then reload so it picks the worktree
+        // up before the first probe returns.
+        await state.openThread('t1');
+        await state.reloadGitChanges();
+        expect(state.gitPanelScopeKey, 'worktree:/repo/wt');
+
+        remoteGate.complete(_json(200, _gitlabRemote()));
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        mrsGate.complete(_json(200, [_mrJson(12, 'stale mr')]));
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+
+        // The new scope's probe answered 404, so nothing from the stale
+        // project-scope load may leak in.
+        expect(state.gitPanelRemote, isNull);
+        expect(state.gitMergeRequests, isEmpty);
+        expect(state.gitIssues, isEmpty);
+      },
+    );
+
+    test('tapping a merge request row opens the merge request dialog', () async {
+      final h = _Harness(
+        remoteResponse: _gitlabRemote(),
+        mrsResponse: [_mrJson(12, 'Add feature')],
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+      await _settleRemote(state);
+
+      await state.openLink(state.gitMergeRequests.first.webUrl);
+      expect(state.dialog, DialogKind.mergeRequest);
+      expect(
+        state.mergeRequestUrl,
+        'https://gitlab.example.com/group/project/-/merge_requests/12',
+      );
+    });
   });
 
   group('GitPanel widget', () {
@@ -1507,6 +1850,112 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('older commit'), findsOneWidget);
       expect(find.text('Load more'), findsNothing);
+    });
+
+    testWidgets('gitlab remote sections list merge requests and issues', (
+      tester,
+    ) async {
+      final h = _Harness(
+        remoteResponse: _gitlabRemote(),
+        mrsResponse: [
+          _mrJson(12, 'Add feature'),
+          _mrJson(9, 'WIP title', draft: true),
+        ],
+        issuesResponse: [
+          _issueJson(5, 'Something broke', labels: ['bug']),
+        ],
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      // pumpAndSettle drains the unawaited remote loads kicked off by the
+      // panel open before asserting on their rows.
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.text('MERGE REQUESTS (2)'), findsOneWidget);
+      expect(find.text('!12'), findsOneWidget);
+      expect(find.text('Add feature'), findsOneWidget);
+      expect(find.text('Draft'), findsOneWidget);
+      expect(find.text('feature/12 → main'), findsOneWidget);
+      expect(find.text('ISSUES (1)'), findsOneWidget);
+      expect(find.text('#5'), findsOneWidget);
+      expect(find.text('Something broke'), findsOneWidget);
+      expect(find.text('bug'), findsOneWidget);
+    });
+
+    testWidgets('remote sections stay hidden without a gitlab remote', (
+      tester,
+    ) async {
+      final h = _Harness();
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('MERGE REQUESTS'), findsNothing);
+      expect(find.textContaining('ISSUES'), findsNothing);
+    });
+
+    testWidgets('tapping a merge request row opens its dialog', (tester) async {
+      final h = _Harness(
+        remoteResponse: _gitlabRemote(),
+        mrsResponse: [_mrJson(12, 'Add feature')],
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Add feature'));
+      await tester.pumpAndSettle();
+      expect(state.dialog, DialogKind.mergeRequest);
+      expect(state.mergeRequestUrl, state.gitMergeRequests.first.webUrl);
+    });
+
+    testWidgets('tapping an issue row opens its dialog', (tester) async {
+      final h = _Harness(
+        remoteResponse: _gitlabRemote(),
+        issuesResponse: [_issueJson(5, 'Something broke')],
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Something broke'));
+      await tester.pumpAndSettle();
+      expect(state.dialog, DialogKind.issue);
+      expect(state.issueUrl, state.gitIssues.first.webUrl);
+    });
+
+    testWidgets('sections collapse and re-expand on header tap', (tester) async {
+      final h = _Harness(
+        remoteResponse: _gitlabRemote(),
+        mrsResponse: [_mrJson(12, 'Add feature')],
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+      expect(find.text('Add feature'), findsOneWidget);
+
+      await tester.tap(find.text('MERGE REQUESTS (1)'));
+      await tester.pumpAndSettle();
+      expect(find.text('Add feature'), findsNothing);
+
+      await tester.tap(find.text('MERGE REQUESTS (1)'));
+      await tester.pumpAndSettle();
+      expect(find.text('Add feature'), findsOneWidget);
     });
   });
 }

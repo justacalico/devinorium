@@ -10,11 +10,13 @@ use std::time::Duration;
 
 pub mod api_client;
 pub mod auth;
+pub mod issues;
 pub mod merge_requests;
 pub mod parse;
 pub mod pipelines;
 
 pub use auth::GitLabStatus;
+pub use issues::GitLabIssueSummary;
 pub use merge_requests::{GitLabMergeRequestSummary, MergeRequestAction};
 pub use parse::{
     first_gitlab_merge_request_url, parse_gitlab_merge_request_url, parse_gitlab_remote_url,
