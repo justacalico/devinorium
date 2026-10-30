@@ -76,6 +76,15 @@ impl super::Db {
         Ok(servers)
     }
 
+    pub async fn set_web_access(&self, user_id: i64, enabled: bool) -> anyhow::Result<()> {
+        sqlx::query("UPDATE users SET web_access_enabled = ? WHERE id = ?")
+            .bind(enabled)
+            .bind(user_id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
     /// Replace the user's MCP server list. Callers validate first.
     pub async fn set_mcp_servers(
         &self,

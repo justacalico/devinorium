@@ -6,6 +6,7 @@
 pub mod api;
 pub mod assets;
 pub mod auth;
+pub mod browser;
 pub mod config;
 pub mod db;
 pub mod federation;

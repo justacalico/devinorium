@@ -221,6 +221,9 @@ pub struct UserRow {
     /// JSON object mapping provider id -> CLI command, e.g.
     /// `{"devin-cli": "devin", "opencode": "opencode"}`.
     pub provider_commands: String,
+    /// Whether agent runs get the builtin headless-browser MCP server.
+    /// Managed through `/api/settings/web-access` (owner only).
+    pub web_access_enabled: bool,
 }
 
 impl UserRow {

@@ -29,6 +29,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/settings/project-root", put(set_project_root))
         .route("/api/settings/mcp-servers", get(get_mcp_servers))
         .route("/api/settings/mcp-servers", put(set_mcp_servers))
+        .route("/api/settings/web-access", get(get_web_access))
+        .route("/api/settings/web-access", put(set_web_access))
 }
 
 /// `.mcpb` bundle routes. Separate from `router()` so `build_app` can give
@@ -361,6 +363,58 @@ struct McpServersResponse {
 #[derive(Debug, Deserialize)]
 struct SetMcpServersRequest {
     servers: Vec<McpServerConfig>,
+}
+
+#[derive(Debug, Serialize)]
+struct WebAccessResponse {
+    enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct SetWebAccessRequest {
+    enabled: bool,
+}
+
+/// Whether the owner's agent runs get the builtin headless browser. Same
+/// gate as the MCP server list: the browser runs on the server with full
+/// outbound network reach.
+async fn get_web_access(
+    State(_state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> Response {
+    if !user.is_owner {
+        return (StatusCode::FORBIDDEN, Json(ApiError::new("forbidden"))).into_response();
+    }
+    Json(WebAccessResponse {
+        enabled: user.web_access_enabled,
+    })
+    .into_response()
+}
+
+async fn set_web_access(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<SetWebAccessRequest>,
+) -> Response {
+    if !user.is_owner {
+        return (StatusCode::FORBIDDEN, Json(ApiError::new("forbidden"))).into_response();
+    }
+    if let Err(e) = state.db.set_web_access(user.id, req.enabled).await {
+        return map_err_internal(e).into_response();
+    }
+    let _ = state
+        .db
+        .audit(
+            Some(user.id),
+            "web_access.set",
+            &serde_json::json!({"enabled": req.enabled}),
+            None,
+        )
+        .await;
+    Json(WebAccessResponse {
+        enabled: req.enabled,
+    })
+    .into_response()
 }
 
 /// The owner's MCP server list. Owner-only on read too: `env` and `headers`
