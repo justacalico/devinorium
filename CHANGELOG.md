@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.111.0 - 2026-10-30
+#### Features
+- 新增 Gemini CLI 提供商 - (a6a16c7) - HttpAnimations
+
+- - -
+
 ## v0.110.0 - 2026-10-29
 #### Features
 - Git 面板新增 GitLab 远程区块 - (6f1e064) - HttpAnimations
