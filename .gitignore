@@ -7,6 +7,7 @@
 /devinorium-*.tar.gz
 /devinorium-*.zip
 /devinorium-*-deb/
+/packaging/windows/*.exe
 **/*.rs.bk
 
 # Frontend build output (ignore built assets, keep placeholder)

@@ -101,6 +101,10 @@ and the bundled "This device" server from the sidebar. Tailscale remote
 access is unavailable on the bundled server (it binds to loopback only), so
 the Tailscale card in Settings → Servers is greyed out there.
 
+Windows releases ship both an Inno Setup installer
+(`devinorium-windows-*-setup.exe`) and a portable zip. The installer defaults
+to a per-user install (no admin needed) and can also install for all users.
+
 For development, the bundled server is only found inside packaged builds. To
 run it under `flutter run`, point the app at a binary you built yourself:
 

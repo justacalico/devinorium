@@ -393,6 +393,19 @@ jobs:
           rm -rf "$pkgdir"
           ../scripts/build-rpm.sh "$BUNDLE" "$VERSION" "$RPM_ARCH" "$ARTIFACTS_DIR/devinorium-linux-$OUT_ARCH.rpm" "$BUILD_NUMBER"
 
+      - name: Install Inno Setup
+        if: startsWith(matrix.target, 'windows')
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v iscc >/dev/null 2>&1 \
+            || [ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ] \
+            || [ -f "/c/Program Files/Inno Setup 6/ISCC.exe" ]; then
+            echo "Inno Setup already installed"
+          else
+            choco install innosetup -y --no-progress
+          fi
+
       - name: Build Windows package
         if: startsWith(matrix.target, 'windows')
         shell: bash
@@ -425,6 +438,8 @@ jobs:
           ../scripts/bundle-server.sh ../target/release/devinorium.exe "$RELEASE_DIR"
           powershell -NoProfile -Command \
             "Compress-Archive -Path '$(cygpath -w "$RELEASE_DIR")\\*' -DestinationPath '$(cygpath -w "$ARTIFACTS_DIR/devinorium-windows-$OUT_ARCH.zip")' -Force"
+          ../scripts/build-windows-installer.sh "$RELEASE_DIR" "$VERSION" "$OUT_ARCH" \
+            "$ARTIFACTS_DIR/devinorium-windows-$OUT_ARCH-setup.exe"
 
       - name: Build macOS package
         if: matrix.target == 'macos'
@@ -693,7 +708,7 @@ jobs:
             - Server binaries (Linux x86_64 + arm64, Windows x86_64, macOS arm64)
             - Android APK + AAB
             - Linux desktop bundle (x86_64 + arm64: tar.gz, zip, deb, rpm)
-            - Windows package (x86_64 + arm64: zip)
+            - Windows desktop (x86_64 + arm64: installer exe, portable zip)
             - macOS app (arm64: dmg, zip)
             - iOS app (arm64: unsigned ipa)
 
@@ -773,6 +788,8 @@ jobs:
               su aur-builder -s /bin/bash -c "
                 set -e
                 bash -n scripts/aur-publish.sh
+                bash -n scripts/build-windows-installer.sh
+                test -f packaging/windows/devinorium.iss || { echo \"missing packaging/windows/devinorium.iss\" >&2; exit 1; }
                 test -f packaging/linux/devinorium.desktop -a -f packaging/linux/devinorium.svg || { echo \"missing packaging/linux assets\" >&2; exit 1; }
                 for d in packaging/aur/*/; do
                   [ -f \"\$d/PKGBUILD\" ] || continue
