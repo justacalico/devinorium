@@ -57,9 +57,69 @@ fn default_transport() -> String {
     "stdio".to_string()
 }
 
+/// Tool namespace of the builtin headless-browser server.
+pub const BUILTIN_BROWSER_NAME: &str = "devinorium-browser";
+
+/// Sentinel `command` marking the builtin browser server. It never reaches
+/// an agent verbatim: [`McpServerConfig::resolved_stdio`] substitutes the
+/// path of the currently-running devinorium binary plus the `browser-mcp`
+/// argument at conversion time, so the same config works on the hub and on
+/// satellites regardless of where each binary is installed.
+pub const BUILTIN_BROWSER_COMMAND: &str = "internal://devinorium-browser";
+
+/// The stdio MCP config injected when the owner's web-access setting is on.
+pub fn builtin_browser() -> McpServerConfig {
+    McpServerConfig {
+        name: BUILTIN_BROWSER_NAME.to_string(),
+        enabled: true,
+        transport: "stdio".to_string(),
+        command: BUILTIN_BROWSER_COMMAND.to_string(),
+        args: Vec::new(),
+        env: BTreeMap::new(),
+        url: String::new(),
+        headers: BTreeMap::new(),
+    }
+}
+
+/// Append the builtin browser server to a run's MCP list when the user has
+/// web access enabled. An enabled user server that already claims the name
+/// wins: shadowing it would just confuse tool routing. A disabled one is
+/// swapped out for the builtin so the toggle is not silently ignored.
+pub fn inject_builtin_browser(servers: &mut Vec<McpServerConfig>, enabled: bool) {
+    if !enabled {
+        return;
+    }
+    if servers
+        .iter()
+        .any(|s| s.name == BUILTIN_BROWSER_NAME && s.enabled)
+    {
+        tracing::warn!(
+            server = BUILTIN_BROWSER_NAME,
+            "a user MCP server already uses the builtin browser name; not injecting"
+        );
+        return;
+    }
+    servers.retain(|s| s.name != BUILTIN_BROWSER_NAME);
+    servers.push(builtin_browser());
+}
+
 impl McpServerConfig {
     pub fn is_remote(&self) -> bool {
         matches!(self.transport.as_str(), "http" | "sse")
+    }
+
+    /// `(command, args)` for a stdio server with builtins resolved: the
+    /// browser sentinel becomes `<current_exe> browser-mcp` so the spawned
+    /// server is always this host's own binary.
+    fn resolved_stdio(&self) -> (String, Vec<String>) {
+        if self.command.trim() == BUILTIN_BROWSER_COMMAND {
+            let exe = std::env::current_exe()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "devinorium".to_string());
+            (exe, vec!["browser-mcp".to_string()])
+        } else {
+            (self.command.trim().to_string(), self.args.clone())
+        }
     }
 
     /// The ACP `session/new` / `session/load` entry, or `None` when the
@@ -75,14 +135,14 @@ impl McpServerConfig {
                 McpServerSse::new(self.name.trim().to_string(), self.url.trim().to_string())
                     .headers(http_headers(&self.headers)),
             )),
-            "stdio" => Some(McpServer::Stdio(
-                McpServerStdio::new(
-                    self.name.trim().to_string(),
-                    self.command.trim().to_string(),
-                )
-                .args(self.args.clone())
-                .env(env_vars(&self.env)),
-            )),
+            "stdio" => {
+                let (command, args) = self.resolved_stdio();
+                Some(McpServer::Stdio(
+                    McpServerStdio::new(self.name.trim().to_string(), command)
+                        .args(args)
+                        .env(env_vars(&self.env)),
+                ))
+            }
             _ => None,
         }
     }
@@ -97,9 +157,10 @@ impl McpServerConfig {
                 "headers": self.headers,
             })
         } else {
+            let (command, args) = self.resolved_stdio();
             serde_json::json!({
-                "command": self.command,
-                "args": self.args,
+                "command": command,
+                "args": args,
                 "env": self.env,
             })
         };
@@ -116,16 +177,12 @@ impl McpServerConfig {
         table.insert("enabled".to_string(), toml::Value::Boolean(self.enabled));
         match self.transport.as_str() {
             "stdio" => {
-                table.insert(
-                    "command".to_string(),
-                    toml::Value::String(self.command.clone()),
-                );
-                if !self.args.is_empty() {
+                let (command, args) = self.resolved_stdio();
+                table.insert("command".to_string(), toml::Value::String(command));
+                if !args.is_empty() {
                     table.insert(
                         "args".to_string(),
-                        toml::Value::Array(
-                            self.args.iter().cloned().map(toml::Value::String).collect(),
-                        ),
+                        toml::Value::Array(args.into_iter().map(toml::Value::String).collect()),
                     );
                 }
                 if !self.env.is_empty() {
@@ -356,6 +413,63 @@ mod tests {
         assert_eq!(s.args, vec!["-y", "pkg"]);
         assert_eq!(s.env.len(), 1);
         assert_eq!(s.env[0].name, "TOKEN");
+    }
+
+    #[test]
+    fn builtin_browser_resolves_to_current_exe() {
+        // The sentinel command never reaches an agent: every conversion
+        // substitutes this host's own binary + `browser-mcp`, which is what
+        // makes the same config work on hub and satellites.
+        let server = builtin_browser();
+        let exe = std::env::current_exe()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        let caps = McpCapabilities::default();
+        let McpServer::Stdio(s) = server.to_acp(&caps).unwrap() else {
+            panic!("expected stdio")
+        };
+        assert_eq!(s.name, BUILTIN_BROWSER_NAME);
+        assert_eq!(s.command, std::path::PathBuf::from(&exe));
+        assert_eq!(s.args, vec!["browser-mcp"]);
+
+        let devin = server.to_devin_entry();
+        assert_eq!(devin["command"], exe);
+        assert_eq!(devin["args"], serde_json::json!(["browser-mcp"]));
+        assert!(devin.get("disabled").is_none());
+
+        let toml::Value::Table(codex) = server.to_codex_entry().unwrap() else {
+            panic!("expected table")
+        };
+        assert_eq!(codex["command"], toml::Value::String(exe.clone()));
+        assert_eq!(
+            codex["args"],
+            toml::Value::Array(vec![toml::Value::String("browser-mcp".into())])
+        );
+        assert_eq!(codex["enabled"], toml::Value::Boolean(true));
+    }
+
+    #[test]
+    fn inject_builtin_browser_respects_flag_and_name_clash() {
+        let mut servers = vec![stdio("mine")];
+        inject_builtin_browser(&mut servers, false);
+        assert_eq!(servers.len(), 1);
+
+        inject_builtin_browser(&mut servers, true);
+        assert_eq!(servers.len(), 2);
+        assert_eq!(servers[1].name, BUILTIN_BROWSER_NAME);
+        assert_eq!(servers[1].command, BUILTIN_BROWSER_COMMAND);
+
+        // Idempotent: a second injection does not duplicate the server, and
+        // a user server that already claims the name is left untouched.
+        let mut clash = vec![McpServerConfig {
+            name: BUILTIN_BROWSER_NAME.into(),
+            ..stdio("user-owned")
+        }];
+        inject_builtin_browser(&mut clash, true);
+        assert_eq!(clash.len(), 1);
+        assert_eq!(clash[0].command, "npx");
     }
 
     #[test]

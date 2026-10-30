@@ -3752,6 +3752,24 @@ abstract class AppLocalizations {
   /// **'MCP servers'**
   String get mcpServers;
 
+  /// Settings topic and section title for the agent web browser
+  ///
+  /// In en, this message translates to:
+  /// **'Web access'**
+  String get webAccess;
+
+  /// Explanation shown above the web access toggle
+  ///
+  /// In en, this message translates to:
+  /// **'Let agents drive a headless Chromium on this server when a run starts: open URLs, click, type, scroll, take screenshots and read the page. It runs where the agent runs (this server or a paired node), not on this device.'**
+  String get webAccessDescription;
+
+  /// Label of the switch that enables the agent web browser
+  ///
+  /// In en, this message translates to:
+  /// **'Allow agents to use the web'**
+  String get webAccessToggle;
+
   /// Explanation shown above the MCP server list
   ///
   /// In en, this message translates to:

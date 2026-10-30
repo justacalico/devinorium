@@ -16013,3 +16013,188 @@ impl Provider for LongWaitProvider {
         Ok(())
     }
 }
+
+// ---------- Agent web access (builtin browser MCP server) ----------
+
+/// Records the MCP server names handed to the provider on each run.
+struct McpSeenProvider {
+    seen: std::sync::Mutex<Vec<Vec<String>>>,
+}
+
+#[async_trait]
+impl Provider for McpSeenProvider {
+    fn id(&self) -> &str {
+        "stub"
+    }
+    fn name(&self) -> &str {
+        "Stub"
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![])
+    }
+    async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
+        self.seen.lock().unwrap().push(
+            req.options
+                .mcp_servers
+                .iter()
+                .map(|s| s.name.clone())
+                .collect(),
+        );
+        if let Some(cb) = &req.options.session_callback {
+            cb("mcp-seen-session".into()).await;
+        }
+        Ok(StartResponse {
+            session_id: "mcp-seen-session".into(),
+            reply: "ok".into(),
+            thinking: String::new(),
+            parts: vec![MessagePart::text("ok")],
+            title: "T".into(),
+            usage: None,
+        })
+    }
+    async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
+        self.seen.lock().unwrap().push(
+            req.options
+                .mcp_servers
+                .iter()
+                .map(|s| s.name.clone())
+                .collect(),
+        );
+        Ok(SendResponse {
+            reply: "ok".into(),
+            thinking: String::new(),
+            parts: vec![MessagePart::text("ok")],
+            usage: None,
+        })
+    }
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn web_access_defaults_off_and_roundtrips() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/settings/web-access", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(body["enabled"], false);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/web-access",
+            &cookie,
+            r#"{"enabled":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/settings/web-access", &cookie, ""))
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(body["enabled"], true);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/web-access",
+            &cookie,
+            r#"{"enabled":false}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/settings/web-access", &cookie, ""))
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(body["enabled"], false);
+}
+
+#[tokio::test]
+async fn web_access_endpoints_are_owner_only() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    create_user(&app, &cookie, "carol", "carolpass123").await;
+    let carol_cookie = login_as(&app, "carol", "carolpass123").await;
+
+    for (method, body) in [("GET", ""), ("PUT", r#"{"enabled":true}"#)] {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                method,
+                "/api/settings/web-access",
+                &carol_cookie,
+                body,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{method}");
+    }
+}
+
+#[tokio::test]
+async fn web_access_injects_builtin_browser_mcp_server() {
+    let provider = Arc::new(McpSeenProvider {
+        seen: std::sync::Mutex::new(Vec::new()),
+    });
+    let (app, _db) = make_app_with_provider(provider.clone()).await;
+    let cookie = login(&app).await;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/web-access",
+            &cookie,
+            r#"{"enabled":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "web").await;
+    send_prompt(&app, &cookie, &tid, "hi").await;
+
+    let seen = provider.seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert!(
+        seen[0].iter().any(|n| n == "devinorium-browser"),
+        "expected builtin browser in mcp list, got {seen:?}"
+    );
+}
+
+#[tokio::test]
+async fn web_access_disabled_sends_no_browser_server() {
+    let provider = Arc::new(McpSeenProvider {
+        seen: std::sync::Mutex::new(Vec::new()),
+    });
+    let (app, _db) = make_app_with_provider(provider.clone()).await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "no-web").await;
+    send_prompt(&app, &cookie, &tid, "hi").await;
+
+    let seen = provider.seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert!(
+        seen[0].iter().all(|n| n != "devinorium-browser"),
+        "browser must not be injected while disabled, got {seen:?}"
+    );
+}

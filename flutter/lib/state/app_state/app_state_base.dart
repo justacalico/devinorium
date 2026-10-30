@@ -206,6 +206,11 @@ abstract class AppStateBase extends ChangeNotifier {
   set _mcpServers(List<McpServerConfig> value);
   int get _mcpSeq;
   set _mcpSeq(int value);
+  bool get _webAccessEnabled;
+  set _webAccessEnabled(bool value);
+  int get _webAccessSeq;
+  set _webAccessSeq(int value);
+  bool get webAccessEnabled;
   List<Skill> get _skills;
   set _skills(List<Skill> value);
   String? get _skillsThreadId;
@@ -768,6 +773,8 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> loadTailscaleStatus();
   Future<void> loadMachines();
   Future<void> loadMcpServers();
+  Future<void> loadWebAccess();
+  Future<String?> saveWebAccess(bool enabled);
   Future<String?> saveMcpServers(List<McpServerConfig> servers);
   Future<String?> installMcpb(
     String filename,

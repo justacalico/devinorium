@@ -8,6 +8,15 @@ use devinorium::{auth, config, db, git, lock, providers, tailscale::Tailscale, A
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // `devinorium browser-mcp` is the agent-facing browser MCP server: a
+    // stdio subprocess agents spawn through their MCP config. It must run
+    // before any .env/config loading so nothing leaks onto stdout, which
+    // carries the protocol.
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("browser-mcp")) {
+        devinorium::browser::run_stdio().await?;
+        return Ok(());
+    }
+
     // `--dev` runs a throwaway instance: random port, no login, and an
     // in-memory database that disappears when the process exits. It binds
     // all interfaces so the UI can be tested from another machine;

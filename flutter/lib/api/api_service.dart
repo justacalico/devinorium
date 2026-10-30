@@ -1312,6 +1312,21 @@ class ApiService {
     ];
   }
 
+  /// Whether the owner's agent runs may use the server-side web browser
+  /// (owner only: the browser runs with the server's network reach).
+  Future<bool> webAccess() async {
+    final j = await _client.get('/api/settings/web-access');
+    return j['enabled'] as bool? ?? false;
+  }
+
+  /// Toggle the agent web browser. Returns the stored flag.
+  Future<bool> saveWebAccess(bool enabled) async {
+    final j = await _client.put('/api/settings/web-access', {
+      'enabled': enabled,
+    });
+    return j['enabled'] as bool? ?? false;
+  }
+
   /// Inspect an `.mcpb` bundle without installing it: the manifest metadata
   /// and the `user_config` fields the owner has to fill in.
   Future<McpbInfo> inspectMcpb({

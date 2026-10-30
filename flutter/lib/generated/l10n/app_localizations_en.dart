@@ -2122,6 +2122,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mcpServers => 'MCP servers';
 
   @override
+  String get webAccess => 'Web access';
+
+  @override
+  String get webAccessDescription =>
+      'Let agents drive a headless Chromium on this server when a run starts: open URLs, click, type, scroll, take screenshots and read the page. It runs where the agent runs (this server or a paired node), not on this device.';
+
+  @override
+  String get webAccessToggle => 'Allow agents to use the web';
+
+  @override
   String get mcpServersHint =>
       'Tool servers agents connect to when a run starts. stdio runs a command; HTTP and SSE connect to a URL. Enabled servers apply to every provider.';
 

@@ -41,6 +41,7 @@ part 'settings/servers_section.dart';
 part 'settings/tailscale_section.dart';
 part 'settings/machines_section.dart';
 part 'settings/mcp_section.dart';
+part 'settings/web_access_section.dart';
 part 'settings/nodes_section.dart';
 part 'settings/section_card.dart';
 part 'settings/settings_row.dart';
@@ -59,6 +60,7 @@ Widget _sectionFor(SettingsTopic topic, AppState state) => switch (topic) {
   SettingsTopic.about => _AboutSection(state: state),
   SettingsTopic.servers => const _ServersSection(),
   SettingsTopic.mcp => const _McpSection(),
+  SettingsTopic.webAccess => const _WebAccessSection(),
 };
 
 class SettingsPage extends StatefulWidget {

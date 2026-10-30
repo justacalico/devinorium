@@ -77,6 +77,7 @@ All configuration is via environment variables. See `.env.example` for the full 
 | `DEVINORIUM_LOCAL_TOKEN` | (unset) | Bundled desktop mode: requests bearing this token map onto the passwordless `local` owner account, and the process exits when stdin closes. Set automatically by the desktop app; not for normal servers |
 | `DEVINORIUM_SATELLITE` | `false` | Run as a stateless execution node: no database, no accounts, no UI. Prints a pairing code on startup for a hub to claim it |
 | `DEVINORIUM_NODE_NAME` | hostname | Display name a satellite advertises to the hub |
+| `DEVINORIUM_BROWSER_BINARY` | (auto-detect) | Chromium/Chrome binary for the agent web browser |
 
 Federation lets one hub run agents on many machines: satellites print a
 pairing code on startup and the hub owner pairs by URL and code under
@@ -125,6 +126,16 @@ the global run-events stream. Enable them under Settings → Personalization.
   Android 13+ the app requests `POST_NOTIFICATIONS` at runtime.
 
 Set `DEVINORIUM_PUSH_CONTACT` to a real contact URI for reliable delivery.
+
+## Agent web browsing
+
+Settings → Web access (owner only) lets agents drive a headless Chromium on
+the machine that runs them, hub or satellite: navigate URLs, click, type,
+scroll, screenshot and read a text snapshot of the page. It is implemented
+as a builtin MCP server (`devinorium browser-mcp`, injected into the run's
+MCP list), so no client needs to be connected. Requires a Chrome/Chromium
+binary on the agent host; set `DEVINORIUM_BROWSER_BINARY` when it is not
+one of the usual names on PATH.
 
 ## Testing
 

@@ -471,7 +471,7 @@ pub(crate) async fn call_provider(
 
     // MCP servers are owner-managed and a stdio entry is arbitrary code
     // execution as the server user, matching the provider-command rule.
-    let mcp_servers = if user.is_owner {
+    let mut mcp_servers = if user.is_owner {
         state.db.get_mcp_servers(user.id).await.unwrap_or_else(|e| {
             tracing::warn!(error = %e, "failed to load mcp servers; running without them");
             Vec::new()
@@ -479,6 +479,7 @@ pub(crate) async fn call_provider(
     } else {
         Vec::new()
     };
+    crate::mcp::inject_builtin_browser(&mut mcp_servers, user.is_owner && user.web_access_enabled);
 
     let options = SendOptions {
         model: thread.model.clone(),
