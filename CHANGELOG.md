@@ -2,6 +2,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.112.0 - 2026-10-30
+#### Features
+- 设置页新增代理网页访问开关 - (c8e4c10) - HttpAnimations
+- 添加服务端无头浏览器 MCP 工具 - (2163e77) - HttpAnimations
+- 添加 Windows Inno Setup 安装程序 - (34ee0a6) - HttpAnimations
+#### Bug Fixes
+- 修复 Windows 安装程序打包路径解析 - (2580506) - HttpAnimations
+- 修复浏览器工具审查发现的问题 - (4e379e2) - HttpAnimations
+
+- - -
+
 ## v0.111.0 - 2026-10-30
 #### Features
 - 新增 Gemini CLI 提供商 - (a6a16c7) - HttpAnimations
