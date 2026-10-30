@@ -82,19 +82,24 @@ pub fn builtin_browser() -> McpServerConfig {
 }
 
 /// Append the builtin browser server to a run's MCP list when the user has
-/// web access enabled. A user-defined server that already claims the name
-/// wins: shadowing it would just confuse tool routing.
+/// web access enabled. An enabled user server that already claims the name
+/// wins: shadowing it would just confuse tool routing. A disabled one is
+/// swapped out for the builtin so the toggle is not silently ignored.
 pub fn inject_builtin_browser(servers: &mut Vec<McpServerConfig>, enabled: bool) {
     if !enabled {
         return;
     }
-    if servers.iter().any(|s| s.name == BUILTIN_BROWSER_NAME) {
+    if servers
+        .iter()
+        .any(|s| s.name == BUILTIN_BROWSER_NAME && s.enabled)
+    {
         tracing::warn!(
             server = BUILTIN_BROWSER_NAME,
             "a user MCP server already uses the builtin browser name; not injecting"
         );
         return;
     }
+    servers.retain(|s| s.name != BUILTIN_BROWSER_NAME);
     servers.push(builtin_browser());
 }
 

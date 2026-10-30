@@ -784,6 +784,12 @@ mixin AuthStore on AppStateBase {
     _tailscaleSeq++;
     _machines = [];
     _machinesSeq++;
+    // MCP servers carry credentials and the web-access flag is
+    // server-scoped: neither may leak into the next server's settings.
+    _mcpServers = [];
+    _mcpSeq++;
+    _webAccessEnabled = false;
+    _webAccessSeq++;
     // The node list belongs to the previous hub.
     _federationNodes = [];
     _federationSelfName = '';

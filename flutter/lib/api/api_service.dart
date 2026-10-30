@@ -1313,7 +1313,7 @@ class ApiService {
   }
 
   /// Whether the owner's agent runs may use the server-side web browser
-  /// (owner only — the browser runs with the server's network reach).
+  /// (owner only: the browser runs with the server's network reach).
   Future<bool> webAccess() async {
     final j = await _client.get('/api/settings/web-access');
     return j['enabled'] as bool? ?? false;

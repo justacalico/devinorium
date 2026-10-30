@@ -1,7 +1,7 @@
 part of '../settings_page.dart';
 
 /// Web access card: whether agent runs get the builtin server-side browser
-/// MCP server. Owner-only like the MCP server list — the browser runs on
+/// MCP server. Owner-only like the MCP server list: the browser runs on
 /// the machine that executes the agent (hub or satellite), with that
 /// server's network reach, so it works with no client connected.
 class _WebAccessSection extends StatelessWidget {

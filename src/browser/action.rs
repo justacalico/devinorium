@@ -102,6 +102,17 @@ pub enum Action {
 }
 
 impl Action {
+    /// The element target this action operates on, when it has one.
+    pub fn target(&self) -> Option<&Target> {
+        match self {
+            Action::Click { target }
+            | Action::Type { target, .. }
+            | Action::Select { target, .. }
+            | Action::Hover { target } => Some(target),
+            _ => None,
+        }
+    }
+
     /// Whether this action can mutate the DOM or navigate. After such an
     /// action the engine bumps its epoch, which invalidates snapshot refs.
     pub fn invalidates_snapshot(&self) -> bool {

@@ -37,8 +37,42 @@ pub trait Engine: Send {
 
     /// Whether the underlying browser is still usable. The stdio server
     /// relaunches the engine when this returns false.
-    fn alive(&self) -> bool {
+    fn alive(&mut self) -> bool {
         true
+    }
+}
+
+/// Tracks DOM versions for snapshot-ref staleness. Every mutating action
+/// bumps `epoch`; `browser_snapshot` stamps the current epoch. Ref-based
+/// tools must be checked against the pre-action epoch, so ordering is:
+/// check target, then bump, then run.
+#[derive(Debug, Default)]
+struct SnapshotClock {
+    epoch: u64,
+    snapshot_epoch: Option<u64>,
+}
+
+impl SnapshotClock {
+    fn check(&self, target: &Target) -> Result<(), String> {
+        if let Target::Ref(_) = target {
+            match self.snapshot_epoch {
+                Some(e) if e == self.epoch => Ok(()),
+                Some(_) => Err(
+                    "the page changed since the last snapshot; call browser_snapshot again".into(),
+                ),
+                None => Err("no snapshot yet; call browser_snapshot first".into()),
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    fn stamp(&mut self) {
+        self.snapshot_epoch = Some(self.epoch);
+    }
+
+    fn bump(&mut self) {
+        self.epoch += 1;
     }
 }
 
@@ -46,28 +80,32 @@ fn text(s: impl Into<String>) -> Vec<ToolContent> {
     vec![ToolContent::Text(s.into())]
 }
 
+/// Cut `s` at `max` bytes without panicking mid-char (str::truncate panics
+/// off-boundary). Assumes `s` is longer than `max`.
+fn truncate_utf8(s: &mut String, max: usize) {
+    let mut end = max.min(s.len());
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s.truncate(end);
+}
+
 /// Page context reported after most actions so the agent always knows where
 /// it ended up.
 async fn page_header(page: &Page, epoch: u64) -> String {
     let url = page.url().await.ok().flatten().unwrap_or_default();
     let title = page.get_title().await.ok().flatten().unwrap_or_default();
-    format!("Page: {title}\nURL: {url}\nSnapshot epoch: {epoch}")
+    format!("Page: {title}\nURL: {url}\nPage epoch: {epoch}")
 }
 
 /// A browser subprocess plus its single working tab.
 pub struct ChromiumEngine {
-    /// Kept for ownership only: dropping it kills the spawned chromium via
-    /// chromiumoxide's `kill_on_drop`.
-    _browser: Browser,
+    /// Dropping it kills the spawned chromium via kill_on_drop.
+    browser: Browser,
     page: Page,
     handler: tokio::task::JoinHandle<()>,
     _profile: tempfile::TempDir,
-    /// Bumped whenever an action may have navigated or mutated the DOM.
-    /// `browser_snapshot` stamps its refs with this epoch and ref-based
-    /// tools refuse to run against an older one.
-    epoch: u64,
-    /// Epoch of the most recent snapshot, if any.
-    snapshot_epoch: Option<u64>,
+    clock: SnapshotClock,
 }
 
 impl ChromiumEngine {
@@ -122,27 +160,12 @@ impl ChromiumEngine {
             .map_err(|e| format!("could not open a tab: {e}"))?;
 
         Ok(Self {
-            _browser: browser,
+            browser,
             page,
             handler,
             _profile: profile,
-            epoch: 0,
-            snapshot_epoch: None,
+            clock: SnapshotClock::default(),
         })
-    }
-
-    fn check_snapshot_fresh(&self, target: &Target) -> Result<(), String> {
-        if let Target::Ref(_) = target {
-            match self.snapshot_epoch {
-                Some(e) if e == self.epoch => Ok(()),
-                Some(_) => Err(
-                    "the page changed since the last snapshot; call browser_snapshot again".into(),
-                ),
-                None => Err("no snapshot yet; call browser_snapshot first".into()),
-            }
-        } else {
-            Ok(())
-        }
     }
 
     async fn element(&self, target: &Target) -> Result<Element, String> {
@@ -190,7 +213,7 @@ impl ChromiumEngine {
             "Page: {}\nURL: {}\nSnapshot epoch: {}\n\n",
             v["title"].as_str().unwrap_or_default(),
             v["url"].as_str().unwrap_or_default(),
-            self.epoch
+            self.clock.epoch
         ));
         let empty = Vec::new();
         for el in v["elements"].as_array().unwrap_or(&empty) {
@@ -239,7 +262,7 @@ impl ChromiumEngine {
                 match tokio::time::timeout(NAV_TIMEOUT, self.page.goto(url.clone())).await {
                     Ok(Ok(_)) => {
                         let snap = self.snapshot_json().await?;
-                        self.snapshot_epoch = Some(self.epoch);
+                        self.clock.stamp();
                         Ok(text(self.format_snapshot(&snap)))
                     }
                     Ok(Err(e)) => Err(format!("navigation failed: {e}")),
@@ -248,7 +271,7 @@ impl ChromiumEngine {
             }
             Action::Snapshot => {
                 let snap = self.snapshot_json().await?;
-                self.snapshot_epoch = Some(self.epoch);
+                self.clock.stamp();
                 Ok(text(self.format_snapshot(&snap)))
             }
             Action::Screenshot => {
@@ -264,12 +287,11 @@ impl ChromiumEngine {
                 .map_err(|_| "screenshot timed out".to_string())?
                 .map_err(|e| format!("screenshot failed: {e}"))?;
                 Ok(vec![
-                    ToolContent::Text(page_header(&self.page, self.epoch).await),
+                    ToolContent::Text(page_header(&self.page, self.clock.epoch).await),
                     ToolContent::ImagePng(png),
                 ])
             }
             Action::Click { target } => {
-                self.check_snapshot_fresh(target)?;
                 self.element(target)
                     .await?
                     .click()
@@ -278,7 +300,7 @@ impl ChromiumEngine {
                 Ok(text(format!(
                     "clicked {}\n{}",
                     target.to_css(),
-                    page_header(&self.page, self.epoch).await
+                    page_header(&self.page, self.clock.epoch).await
                 )))
             }
             Action::Type {
@@ -286,14 +308,25 @@ impl ChromiumEngine {
                 text: input,
                 submit,
             } => {
-                self.check_snapshot_fresh(target)?;
                 let el = self.element(target).await?;
-                el.click()
+                // JS focus, not a click: typing into a <button> must not
+                // fire its click handler.
+                el.focus()
                     .await
                     .map_err(|e| format!("could not focus element: {e}"))?;
-                el.type_str(input)
-                    .await
-                    .map_err(|e| format!("typing failed: {e}"))?;
+                // Input.insertText types arbitrary Unicode in one shot;
+                // press_key only covers the US key layout.
+                tokio::time::timeout(
+                    OP_TIMEOUT,
+                    self.page.execute(
+                        chromiumoxide::cdp::browser_protocol::input::InsertTextParams::new(
+                            input.as_str(),
+                        ),
+                    ),
+                )
+                .await
+                .map_err(|_| "typing timed out".to_string())?
+                .map_err(|e| format!("typing failed: {e}"))?;
                 if *submit {
                     el.press_key("Enter")
                         .await
@@ -303,7 +336,7 @@ impl ChromiumEngine {
                     "typed {} chars into {}\n{}",
                     input.chars().count(),
                     target.to_css(),
-                    page_header(&self.page, self.epoch).await
+                    page_header(&self.page, self.clock.epoch).await
                 )))
             }
             Action::PressKey { key } => {
@@ -316,7 +349,7 @@ impl ChromiumEngine {
                     .map_err(|e| format!("unknown or unsupported key `{key}` ({e})"))?;
                 Ok(text(format!(
                     "pressed {key}\n{}",
-                    page_header(&self.page, self.epoch).await
+                    page_header(&self.page, self.clock.epoch).await
                 )))
             }
             Action::Scroll { direction, amount } => {
@@ -347,7 +380,7 @@ impl ChromiumEngine {
                     } else {
                         ""
                     },
-                    page_header(&self.page, self.epoch).await
+                    page_header(&self.page, self.clock.epoch).await
                 )))
             }
             Action::Back | Action::Forward | Action::Reload => {
@@ -364,7 +397,12 @@ impl ChromiumEngine {
                         } else {
                             "history.forward()"
                         };
-                        let _: Value = self.eval(js).await.unwrap_or(Value::Null);
+                        // history.back() returns undefined, so only the
+                        // transport-level result is meaningful here.
+                        tokio::time::timeout(OP_TIMEOUT, self.page.evaluate(js))
+                            .await
+                            .map_err(|_| "history navigation timed out".to_string())?
+                            .map_err(|e| format!("history navigation failed: {e}"))?;
                         tokio::time::sleep(Duration::from_millis(SETTLE_MS)).await;
                     }
                 }
@@ -375,7 +413,7 @@ impl ChromiumEngine {
                         Action::Forward => "went forward",
                         _ => "reloaded",
                     },
-                    page_header(&self.page, self.epoch).await
+                    page_header(&self.page, self.clock.epoch).await
                 )))
             }
             Action::Wait { ms } => {
@@ -410,13 +448,12 @@ impl ChromiumEngine {
                     .await?;
                 let mut s = serde_json::to_string_pretty(&res).unwrap_or_else(|_| res.to_string());
                 if s.len() > MAX_EVAL_OUTPUT {
-                    s.truncate(MAX_EVAL_OUTPUT);
+                    truncate_utf8(&mut s, MAX_EVAL_OUTPUT);
                     s.push_str("\n…[truncated]");
                 }
                 Ok(text(s))
             }
             Action::Select { target, values } => {
-                self.check_snapshot_fresh(target)?;
                 let el = self.element(target).await?;
                 let res = tokio::time::timeout(
                     OP_TIMEOUT,
@@ -454,11 +491,10 @@ impl ChromiumEngine {
                     "selected {} value(s) in {}\n{}",
                     values.len(),
                     target.to_css(),
-                    page_header(&self.page, self.epoch).await
+                    page_header(&self.page, self.clock.epoch).await
                 )))
             }
             Action::Hover { target } => {
-                self.check_snapshot_fresh(target)?;
                 self.element(target)
                     .await?
                     .hover()
@@ -473,14 +509,30 @@ impl ChromiumEngine {
 #[async_trait]
 impl Engine for ChromiumEngine {
     async fn perform(&mut self, action: &Action) -> Result<Vec<ToolContent>, String> {
+        if let Some(target) = action.target() {
+            self.clock.check(target)?;
+        }
         if action.invalidates_snapshot() {
-            self.epoch += 1;
+            self.clock.bump();
         }
         self.run(action).await
     }
 
-    fn alive(&self) -> bool {
-        !self.handler.is_finished()
+    fn alive(&mut self) -> bool {
+        if self.handler.is_finished() {
+            return false;
+        }
+        // chromiumoxide's handler never returns Ready(None) on a dead
+        // connection, so the task handle alone cannot detect a crashed
+        // browser; ask the child process directly.
+        match self.browser.get_mut_child() {
+            Some(child) => child
+                .as_mut_inner()
+                .try_wait()
+                .map(|status| status.is_none())
+                .unwrap_or(false),
+            None => true,
+        }
     }
 }
 
@@ -545,6 +597,7 @@ pub(crate) mod test_support {
     pub struct FakeEngine {
         pub calls: Mutex<Vec<Action>>,
         pub results: Mutex<Vec<Result<Vec<ToolContent>, String>>>,
+        pub alive: bool,
     }
 
     impl FakeEngine {
@@ -554,6 +607,7 @@ pub(crate) mod test_support {
             Self {
                 calls: Mutex::new(Vec::new()),
                 results: Mutex::new(results),
+                alive: true,
             }
         }
     }
@@ -569,5 +623,52 @@ pub(crate) mod test_support {
                 .pop()
                 .unwrap_or_else(|| Ok(text("ok")))?)
         }
+
+        fn alive(&mut self) -> bool {
+            self.alive
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ref_target(n: u64) -> Target {
+        Target::Ref(n)
+    }
+
+    #[test]
+    fn clock_check_ordering_matches_perform() {
+        // perform() checks the target, then bumps, then runs. Simulate the
+        // navigate -> snapshot -> click -> snapshot -> click flow.
+        let mut clock = SnapshotClock::default();
+
+        // No snapshot yet: ref tools fail, selector tools pass.
+        assert!(clock.check(&ref_target(1)).is_err());
+        assert!(clock.check(&Target::Selector("a".into())).is_ok());
+
+        // browser_navigate bumps, then stamps a snapshot.
+        clock.bump();
+        clock.stamp();
+        assert!(clock.check(&ref_target(3)).is_ok());
+
+        // browser_click checks first (passes), then bumps.
+        assert!(clock.check(&ref_target(3)).is_ok());
+        clock.bump();
+        assert!(clock.check(&ref_target(3)).is_err());
+
+        // A fresh snapshot re-arms the refs.
+        clock.stamp();
+        assert!(clock.check(&ref_target(1)).is_ok());
+
+        // Read-only actions never bump: scroll/snapshot leave refs valid.
+        assert!(clock.check(&ref_target(2)).is_ok());
+    }
+
+    #[test]
+    fn clock_selector_targets_bypass_staleness() {
+        let clock = SnapshotClock::default();
+        assert!(clock.check(&Target::Selector("div".into())).is_ok());
     }
 }

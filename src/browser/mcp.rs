@@ -18,6 +18,9 @@ use super::tools;
 
 const PROTOCOL_VERSION: &str = "2025-06-18";
 
+/// Reject absurd single messages; MCP requests are small JSON-RPC bodies.
+const MAX_LINE_BYTES: usize = 4 * 1024 * 1024;
+
 type EngineFactory = Arc<
     dyn Fn() -> Pin<Box<dyn Future<Output = Result<Box<dyn Engine>, String>> + Send>> + Send + Sync,
 >;
@@ -54,33 +57,20 @@ async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
 }
 
-/// Lazily-created engine plus the last launch error, so every tool call
-/// after a failed launch reports the real cause instead of retrying.
+/// Lazily-created engine. A dead browser is dropped and relaunched on the
+/// next call; a failed launch does not stick, so a binary installed later
+/// or a transient spawn failure heals itself.
 struct EngineSlot {
     engine: Option<Box<dyn Engine>>,
-    launch_error: Option<String>,
 }
 
 impl EngineSlot {
     async fn get(&mut self, factory: &EngineFactory) -> Result<&mut dyn Engine, String> {
-        let dead = self.engine.as_ref().is_some_and(|e| !e.alive());
-        if dead {
+        if self.engine.as_mut().is_some_and(|e| !e.alive()) {
             self.engine = None;
         }
         if self.engine.is_none() {
-            if let Some(err) = &self.launch_error {
-                return Err(err.clone());
-            }
-            match factory().await {
-                Ok(e) => {
-                    self.engine = Some(e);
-                    self.launch_error = None;
-                }
-                Err(e) => {
-                    self.launch_error = Some(e.clone());
-                    return Err(e);
-                }
-            }
+            self.engine = Some(factory().await?);
         }
         Ok(self.engine.as_deref_mut().unwrap())
     }
@@ -163,14 +153,19 @@ where
     R: tokio::io::AsyncBufRead + Unpin,
     W: tokio::io::AsyncWrite + Unpin,
 {
-    let mut slot = EngineSlot {
-        engine: None,
-        launch_error: None,
-    };
+    let mut slot = EngineSlot { engine: None };
     let mut lines = reader.lines();
     while let Some(line) = lines.next_line().await? {
         let line = line.trim();
         if line.is_empty() {
+            continue;
+        }
+        if line.len() > MAX_LINE_BYTES {
+            let resp = rpc_error(&Value::Null, -32700, "message too large");
+            let mut out = serde_json::to_vec(&resp)?;
+            out.push(b'\n');
+            writer.write_all(&out).await?;
+            writer.flush().await?;
             continue;
         }
         let response = match serde_json::from_str::<Value>(line) {
@@ -300,22 +295,64 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn engine_relaunch_after_dead() {
-        // Two factories: first engine dead, second alive — EngineSlot must relaunch.
-        let seq = Arc::new(Mutex::new(0));
-        let factory: EngineFactory = Arc::new(move || {
-            let seq = seq.clone();
-            Box::pin(async move {
-                *seq.lock().unwrap() += 1;
-                Ok(Box::new(FakeEngine::new(vec![])) as Box<dyn Engine>)
+    async fn launch_failure_does_not_stick() {
+        // First call fails, second succeeds: a missing binary or transient
+        // spawn error must not brick the server for its lifetime.
+        let attempts = Arc::new(Mutex::new(0));
+        let factory: EngineFactory = {
+            let attempts = attempts.clone();
+            Arc::new(move || {
+                let attempts = attempts.clone();
+                Box::pin(async move {
+                    let n = {
+                        let mut g = attempts.lock().unwrap();
+                        *g += 1;
+                        *g
+                    };
+                    if n == 1 {
+                        Err("spawn failed".to_string())
+                    } else {
+                        Ok(Box::new(FakeEngine::new(vec![])) as Box<dyn Engine>)
+                    }
+                })
             })
-        });
-        let mut slot = EngineSlot {
-            engine: None,
-            launch_error: None,
         };
+        let mut slot = EngineSlot { engine: None };
+        assert!(slot.get(&factory).await.is_err());
+        assert!(slot.get(&factory).await.is_ok());
+        assert_eq!(*attempts.lock().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn engine_relaunch_after_dead() {
+        // First factory result reports dead; the slot must drop it and
+        // launch a fresh engine instead of reusing the corpse.
+        let calls = Arc::new(Mutex::new(0));
+        let factory: EngineFactory = {
+            let calls = calls.clone();
+            Arc::new(move || {
+                let calls = calls.clone();
+                Box::pin(async move {
+                    let n = {
+                        let mut g = calls.lock().unwrap();
+                        *g += 1;
+                        *g
+                    };
+                    let mut engine = FakeEngine::new(vec![]);
+                    engine.alive = n > 1;
+                    Ok(Box::new(engine) as Box<dyn Engine>)
+                })
+            })
+        };
+        let mut slot = EngineSlot { engine: None };
         slot.get(&factory).await.unwrap();
-        assert!(slot.engine.is_some());
+        assert_eq!(*calls.lock().unwrap(), 1);
+        // The stored engine reports dead: the next get must relaunch.
+        slot.get(&factory).await.unwrap();
+        assert_eq!(*calls.lock().unwrap(), 2);
+        // Alive engine is reused, not relaunched.
+        slot.get(&factory).await.unwrap();
+        assert_eq!(*calls.lock().unwrap(), 2);
     }
 
     #[tokio::test]

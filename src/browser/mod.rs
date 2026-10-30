@@ -2,7 +2,7 @@
 //!
 //! When the owner enables "web access" in settings, `send` appends a
 //! builtin stdio MCP server (`devinorium-browser`) to the run's MCP list.
-//! The agent then spawns `devinorium browser-mcp` — this binary — on
+//! The agent then spawns `devinorium browser-mcp`, this binary, on
 //! whichever machine executes it (hub or satellite), so the browser always
 //! runs server-side and works with no client connected.
 //!
