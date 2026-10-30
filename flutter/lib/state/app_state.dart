@@ -225,6 +225,7 @@ class AppState extends AppStateBase
     List<MachineReference> machineReferences = const [],
     List<Machine> machines = const [],
     List<McpServerConfig> mcpServers = const [],
+    bool webAccessEnabled = false,
     List<Skill> skills = const [],
     String? selectedModel,
     String? selectedReasoning,
@@ -270,6 +271,7 @@ class AppState extends AppStateBase
     _tailscaleInfo = tailscaleInfo;
     _machines = List.of(machines);
     _mcpServers = List.of(mcpServers);
+    _webAccessEnabled = webAccessEnabled;
     _skills = List.of(skills);
     _cloneRoot = cloneRoot;
     _worktreeRoot = worktreeRoot;

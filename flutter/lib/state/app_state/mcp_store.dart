@@ -39,6 +39,55 @@ mixin McpStore on AppStateBase {
     }
   }
 
+  // ---- Agent web access (builtin browser MCP server) ----
+
+  @override
+  bool _webAccessEnabled = false;
+  @override
+  int _webAccessSeq = 0;
+
+  @override
+  bool get webAccessEnabled => _webAccessEnabled;
+
+  /// Pull `GET /api/settings/web-access` for the active server. Owner-only
+  /// like the MCP list: the browser runs on the server. Same seq guard so a
+  /// response from a previous server cannot land after a switch.
+  @override
+  Future<void> loadWebAccess() async {
+    if (multiServerState.activeApi == null || !isOwner) {
+      _webAccessSeq++;
+      if (_webAccessEnabled) {
+        _webAccessEnabled = false;
+        notifyListeners();
+      }
+      return;
+    }
+    final seq = ++_webAccessSeq;
+    try {
+      final enabled = await api.webAccess();
+      if (seq != _webAccessSeq) return;
+      _webAccessEnabled = enabled;
+      notifyListeners();
+    } catch (_) {
+      // Keep the last known flag on transient failures.
+    }
+  }
+
+  /// Toggle the flag; the response is the stored value. Returns an error
+  /// string on failure.
+  @override
+  Future<String?> saveWebAccess(bool enabled) async {
+    try {
+      _webAccessEnabled = await api.saveWebAccess(enabled);
+      notifyListeners();
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
   /// Replace the whole MCP server list; add/edit/delete/toggle all share
   /// this write. Returns an error string on failure.
   @override

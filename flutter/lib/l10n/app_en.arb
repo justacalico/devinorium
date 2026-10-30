@@ -1607,6 +1607,18 @@
   "@mcpServers": {
     "description": "Settings topic and section title for MCP servers"
   },
+  "webAccess": "Web access",
+  "@webAccess": {
+    "description": "Settings topic and section title for the agent web browser"
+  },
+  "webAccessDescription": "Let agents drive a headless Chromium on this server when a run starts: open URLs, click, type, scroll, take screenshots and read the page. It runs where the agent runs (this server or a paired node), not on this device.",
+  "@webAccessDescription": {
+    "description": "Explanation shown above the web access toggle"
+  },
+  "webAccessToggle": "Allow agents to use the web",
+  "@webAccessToggle": {
+    "description": "Label of the switch that enables the agent web browser"
+  },
   "mcpServersHint": "Tool servers agents connect to when a run starts. stdio runs a command; HTTP and SSE connect to a URL. Enabled servers apply to every provider.",
   "@mcpServersHint": {
     "description": "Explanation shown above the MCP server list"

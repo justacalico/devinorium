@@ -2034,6 +2034,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get mcpServers => 'MCP 服务器';
 
   @override
+  String get webAccess => '网页访问';
+
+  @override
+  String get webAccessDescription =>
+      '允许代理在运行开始时使用本服务器上的无头 Chromium：打开网址、点击、输入、滚动、截图和读取页面内容。浏览器运行在代理所在机器（本服务器或已配对节点），而不是本设备上。';
+
+  @override
+  String get webAccessToggle => '允许代理访问网页';
+
+  @override
   String get mcpServersHint =>
       '运行开始时代理连接的工具服务器。stdio 运行本地命令，HTTP 和 SSE 连接远程地址。已启用的服务器对所有提供方生效。';
 
