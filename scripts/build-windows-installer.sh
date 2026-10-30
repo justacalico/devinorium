@@ -22,6 +22,9 @@ if [ ! -d "$RELEASE_DIR" ]; then
   echo "build-windows-installer: release dir not found: $RELEASE_DIR" >&2
   exit 1
 fi
+# ISCC resolves relative SourceDir paths against the .iss location, not the
+# caller's cwd, so the path must be absolute before cygpath converts it.
+RELEASE_DIR="$(cd "$RELEASE_DIR" && pwd)"
 for f in "$RELEASE_DIR/devinorium_frontend.exe" "$RELEASE_DIR/server/devinorium.exe"; do
   if [ ! -f "$f" ]; then
     echo "build-windows-installer: $RELEASE_DIR is missing $f" >&2
