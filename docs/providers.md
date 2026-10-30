@@ -58,6 +58,7 @@ pub fn build_provider(cfg: ProviderConfig) -> anyhow::Result<Box<dyn Provider>> 
         "devin-cli" => acp::AgentKind::Devin,
         "opencode" => acp::AgentKind::Opencode,
         "grok" => acp::AgentKind::Grok,
+        "gemini" => acp::AgentKind::Gemini,
         other => anyhow::bail!("unknown provider: {other}"),
     };
     Ok(Box::new(acp::AcpProvider::new(kind, cfg.command, cfg.default_model)))
@@ -75,7 +76,13 @@ implementation in `src/providers/acp/`. Grok Code speaks the same protocol over
 `grok agent stdio`; the per-agent argv lives in `AgentKind::acp_args`, and its
 model catalog is read from the `initialize` response's
 `_meta.modelState.availableModels` (including the `reasoning_effort` session
-config option it advertises). Codex CLI has no `acp` subcommand, so
+config option it advertises). The Gemini CLI speaks ACP over
+`gemini --experimental-acp`: its session modes are its approval modes
+(`default`/`autoEdit`/`yolo`/`plan`), so the thread's permission mode maps
+onto `session/set_mode` (with the plan interaction mode selecting `plan`),
+and because it advertises no `model` session config option the requested
+model goes on the command line as `--model <id>`; its model list comes from
+the static catalog in `acp/models.rs`. Codex CLI has no `acp` subcommand, so
 `src/providers/codex/` drives `codex app-server --stdio` — the JSON-RPC
 transport built into the Codex CLI — for threads, turns, streaming items,
 approvals, and `model/list`.

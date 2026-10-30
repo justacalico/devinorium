@@ -2,7 +2,7 @@
 //!
 //! Agents that speak ACP over stdio share one implementation here, split into
 //! focused modules:
-//! - `spec`: per-agent differences (Devin CLI, OpenCode, Grok Code)
+//! - `spec`: per-agent differences (Devin CLI, OpenCode, Grok Code, Gemini CLI)
 //! - `provider`: provider struct and lifecycle
 //! - `session_config`: ACP session config and interaction mode mapping
 //! - `permissions`: permission request handling

@@ -16,6 +16,8 @@ pub enum AgentKind {
     Opencode,
     /// `grok agent stdio` — the Grok Code CLI.
     Grok,
+    /// `gemini --experimental-acp`: the Gemini CLI.
+    Gemini,
 }
 
 impl AgentKind {
@@ -25,6 +27,7 @@ impl AgentKind {
             Self::Devin => "devin-cli",
             Self::Opencode => "opencode",
             Self::Grok => "grok",
+            Self::Gemini => "gemini",
         }
     }
 
@@ -34,6 +37,7 @@ impl AgentKind {
             Self::Devin => "Devin CLI",
             Self::Opencode => "OpenCode",
             Self::Grok => "Grok Code",
+            Self::Gemini => "Gemini CLI",
         }
     }
 
@@ -43,6 +47,7 @@ impl AgentKind {
             Self::Devin => "devin",
             Self::Opencode => "opencode",
             Self::Grok => "grok",
+            Self::Gemini => "gemini",
         }
     }
 
@@ -51,6 +56,38 @@ impl AgentKind {
         match self {
             Self::Devin | Self::Opencode => &["acp"],
             Self::Grok => &["agent", "stdio"],
+            Self::Gemini => &["--experimental-acp"],
+        }
+    }
+
+    /// CLI args appended after [`acp_args`](Self::acp_args) when the agent is
+    /// spawned for a prompt turn. Gemini advertises no `model` session
+    /// config option over ACP, so the requested model goes on the command
+    /// line instead. The value is constrained to model-id characters and
+    /// may not start with `-`, so a stored thread model can never turn
+    /// into a different flag.
+    pub fn extra_spawn_args(self, model: &str) -> Vec<String> {
+        match self {
+            Self::Gemini => {
+                let model = model.trim();
+                let safe = !model.is_empty()
+                    && !model.starts_with('-')
+                    && model
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'));
+                if safe {
+                    vec!["--model".into(), model.to_string()]
+                } else {
+                    if !model.is_empty() {
+                        tracing::warn!(
+                            model = %model,
+                            "gemini model id is not flag-safe; running the CLI default"
+                        );
+                    }
+                    Vec::new()
+                }
+            }
+            _ => Vec::new(),
         }
     }
 
@@ -62,6 +99,7 @@ impl AgentKind {
             Self::Devin => Some("https://static.devin.ai/cli/current/manifest.json"),
             Self::Opencode => Some("https://registry.npmjs.org/opencode-ai/latest"),
             Self::Grok => None,
+            Self::Gemini => Some("https://registry.npmjs.org/@google%2Fgemini-cli/latest"),
         }
     }
 
@@ -71,11 +109,13 @@ impl AgentKind {
     /// Devin has a dedicated `interaction_mode` option. OpenCode's `mode`
     /// option selects its agent (`build`/`plan`), which is the same idea.
     /// Grok advertises no such option; the prompt prefix carries the mode.
+    /// Gemini's modes are its approval modes, so the interaction mode is
+    /// carried by `session/set_mode` plus the prompt prefix.
     pub fn interaction_mode_option(self) -> Option<&'static str> {
         match self {
             Self::Devin => Some("interaction_mode"),
             Self::Opencode => Some("mode"),
-            Self::Grok => None,
+            Self::Grok | Self::Gemini => None,
         }
     }
 
@@ -87,23 +127,47 @@ impl AgentKind {
     /// the callback/bypass handling in `permissions.rs` covers the rest.
     /// Grok exposes no permission config option either; its own permission
     /// rules and `session/request_permission` decide when approval is asked.
+    /// Gemini maps its approval modes onto `session/set_mode` instead.
     pub fn permission_mode_option(self) -> Option<&'static str> {
         match self {
             Self::Devin => Some("mode"),
-            Self::Opencode | Self::Grok => None,
+            Self::Opencode | Self::Grok | Self::Gemini => None,
         }
     }
 
-    /// Map a composer interaction mode to an ACP `session/set_mode` id, when
-    /// the agent supports that request. OpenCode exposes its agent selection
-    /// as the `mode` config option instead, and Grok has no session modes.
-    pub fn session_mode_id(self, mode: &str) -> Option<SessionModeId> {
+    /// Map a composer interaction mode plus permission mode to an ACP
+    /// `session/set_mode` id, when the agent supports that request.
+    /// OpenCode exposes its agent selection as the `mode` config option
+    /// instead, and Grok has no session modes.
+    ///
+    /// Gemini's session modes are its approval modes (`default`,
+    /// `autoEdit`, `yolo`, `plan`), so the permission mode drives the
+    /// mapping; an interaction mode of `plan` selects the read-only plan
+    /// mode outright. `ask` keeps the permission-derived mode; the prompt
+    /// prefix is what enforces "no tools".
+    pub fn session_mode_id(
+        self,
+        interaction_mode: &str,
+        permission_mode: &str,
+    ) -> Option<SessionModeId> {
         match self {
             Self::Devin => {
-                let id = match mode.trim().to_lowercase().as_str() {
+                let id = match interaction_mode.trim().to_lowercase().as_str() {
                     "ask" => "ask",
                     "plan" => "plan",
                     _ => "default",
+                };
+                Some(SessionModeId::new(id))
+            }
+            Self::Gemini => {
+                let id = if interaction_mode.trim().eq_ignore_ascii_case("plan") {
+                    "plan"
+                } else {
+                    match permission_mode.trim() {
+                        "bypass" | "yolo" => "yolo",
+                        "accept-edits" | "smart" => "autoEdit",
+                        _ => "default",
+                    }
                 };
                 Some(SessionModeId::new(id))
             }
@@ -139,9 +203,9 @@ impl AgentKind {
                 .find(|v| *v == "build")
                 .cloned()
                 .or_else(|| choices.first().cloned()),
-            // Grok advertises no interaction mode option, so this is only
-            // reachable if a future version adds one; take the default.
-            Self::Grok => choices.first().cloned(),
+            // Grok and Gemini advertise no interaction mode option, so this
+            // is only reachable if a future version adds one; take the default.
+            Self::Grok | Self::Gemini => choices.first().cloned(),
         }
     }
 }

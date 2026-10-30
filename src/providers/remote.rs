@@ -266,6 +266,7 @@ impl Provider for RemoteProvider {
             "opencode" => "opencode",
             "codex" => "codex",
             "grok" => "grok",
+            "gemini" => "gemini",
             _ => "remote",
         }
     }

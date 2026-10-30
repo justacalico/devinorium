@@ -47,6 +47,7 @@ String defaultProviderCommand(String providerId) => switch (providerId) {
   'opencode' => 'opencode',
   'codex' => 'codex',
   'grok' => 'grok',
+  'gemini' => 'gemini',
   _ => 'devin',
 };
 
