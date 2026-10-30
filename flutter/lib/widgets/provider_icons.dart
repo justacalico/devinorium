@@ -57,6 +57,11 @@ class ProviderIcon extends StatelessWidget {
           height: size,
           colorFilter: ColorFilter.mode(effectiveColor, BlendMode.srcIn),
         ),
+      'gemini' => SvgPicture.asset(
+          'assets/providers/gemini.svg',
+          width: size,
+          height: size,
+        ),
       _ => Icon(
           Icons.smart_toy_outlined,
           size: size,
@@ -80,5 +85,6 @@ String providerName(String providerId) => switch (providerId) {
   'opencode' => 'OpenCode',
   'codex' => 'Codex CLI',
   'grok' => 'Grok Code',
+  'gemini' => 'Gemini CLI',
   _ => providerId,
 };

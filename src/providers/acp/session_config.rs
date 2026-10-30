@@ -313,20 +313,32 @@ mod tests {
     #[test]
     fn devin_session_mode_id_maps_interaction_modes() {
         assert_eq!(
-            AgentKind::Devin.session_mode_id("plan").unwrap().0.as_ref(),
+            AgentKind::Devin
+                .session_mode_id("plan", "normal")
+                .unwrap()
+                .0
+                .as_ref(),
             "plan"
         );
         assert_eq!(
-            AgentKind::Devin.session_mode_id("ask").unwrap().0.as_ref(),
+            AgentKind::Devin
+                .session_mode_id("ask", "normal")
+                .unwrap()
+                .0
+                .as_ref(),
             "ask"
         );
         assert_eq!(
-            AgentKind::Devin.session_mode_id("code").unwrap().0.as_ref(),
+            AgentKind::Devin
+                .session_mode_id("code", "normal")
+                .unwrap()
+                .0
+                .as_ref(),
             "default"
         );
         assert_eq!(
             AgentKind::Devin
-                .session_mode_id("unknown")
+                .session_mode_id("unknown", "normal")
                 .unwrap()
                 .0
                 .as_ref(),
@@ -336,7 +348,9 @@ mod tests {
 
     #[test]
     fn opencode_uses_config_option_not_session_mode() {
-        assert!(AgentKind::Opencode.session_mode_id("plan").is_none());
+        assert!(AgentKind::Opencode
+            .session_mode_id("plan", "normal")
+            .is_none());
         assert_eq!(AgentKind::Opencode.interaction_mode_option(), Some("mode"));
         assert!(AgentKind::Opencode.permission_mode_option().is_none());
     }
@@ -349,8 +363,59 @@ mod tests {
         assert_eq!(AgentKind::Grok.acp_args(), &["agent", "stdio"]);
         assert!(AgentKind::Grok.interaction_mode_option().is_none());
         assert!(AgentKind::Grok.permission_mode_option().is_none());
-        assert!(AgentKind::Grok.session_mode_id("plan").is_none());
+        assert!(AgentKind::Grok.session_mode_id("plan", "normal").is_none());
         assert!(AgentKind::Grok.version_manifest_url().is_none());
+    }
+
+    #[test]
+    fn gemini_maps_permission_mode_to_approval_mode() {
+        assert_eq!(AgentKind::Gemini.id(), "gemini");
+        assert_eq!(AgentKind::Gemini.name(), "Gemini CLI");
+        assert_eq!(AgentKind::Gemini.default_command(), "gemini");
+        assert_eq!(AgentKind::Gemini.acp_args(), &["--experimental-acp"]);
+        assert!(AgentKind::Gemini.interaction_mode_option().is_none());
+        assert!(AgentKind::Gemini.permission_mode_option().is_none());
+        assert!(AgentKind::Gemini.version_manifest_url().is_some());
+
+        let mode = |interaction: &str, permission: &str| {
+            AgentKind::Gemini
+                .session_mode_id(interaction, permission)
+                .unwrap()
+                .0
+                .to_string()
+        };
+        // The plan interaction mode picks the read-only plan mode outright.
+        assert_eq!(mode("plan", "normal"), "plan");
+        assert_eq!(mode("plan", "bypass"), "plan");
+        // Everything else is permission-driven.
+        assert_eq!(mode("code", "normal"), "default");
+        assert_eq!(mode("code", "accept-edits"), "autoEdit");
+        assert_eq!(mode("code", "smart"), "autoEdit");
+        assert_eq!(mode("code", "bypass"), "yolo");
+        assert_eq!(mode("code", "yolo"), "yolo");
+        assert_eq!(mode("ask", "normal"), "default");
+        assert_eq!(mode("code", "bogus"), "default");
+    }
+
+    #[test]
+    fn gemini_spawn_args_carry_the_model_flag() {
+        assert_eq!(
+            AgentKind::Gemini.extra_spawn_args("gemini-3.1-pro-preview"),
+            vec!["--model", "gemini-3.1-pro-preview"]
+        );
+        assert_eq!(
+            AgentKind::Gemini.extra_spawn_args("auto"),
+            vec!["--model", "auto"]
+        );
+        // Empty or unsafe values emit no flag; a leading dash must never
+        // become another CLI flag.
+        assert!(AgentKind::Gemini.extra_spawn_args("").is_empty());
+        assert!(AgentKind::Gemini.extra_spawn_args("  ").is_empty());
+        assert!(AgentKind::Gemini.extra_spawn_args("--yolo").is_empty());
+        assert!(AgentKind::Gemini.extra_spawn_args("a b").is_empty());
+        // Non-Gemini agents never get extra args.
+        assert!(AgentKind::Devin.extra_spawn_args("glm-5-2").is_empty());
+        assert!(AgentKind::Grok.extra_spawn_args("grok-4.6").is_empty());
     }
 
     #[test]

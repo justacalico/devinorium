@@ -50,7 +50,8 @@ static ABSOLUTE_RE: LazyLock<Regex> =
 
 /// Whether the provider wired to the thread is one we know how to auto-retry.
 /// Only Devin CLI reports a parseable reset hint and marks the failure
-/// retryable; Codex, OpenCode, and Grok errors keep their old behavior.
+/// retryable; Codex, OpenCode, Grok, and Gemini errors keep their old
+/// behavior.
 pub fn supports_auto_retry(provider_id: &str) -> bool {
     provider_id == crate::providers::acp::AgentKind::Devin.id()
 }
@@ -271,6 +272,7 @@ mod tests {
         assert!(!supports_auto_retry("opencode"));
         assert!(!supports_auto_retry("codex-cli"));
         assert!(!supports_auto_retry("grok"));
+        assert!(!supports_auto_retry("gemini"));
         assert!(!supports_auto_retry(""));
     }
 

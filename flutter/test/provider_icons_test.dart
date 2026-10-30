@@ -21,6 +21,7 @@ void main() {
       'assets/providers/opencode.svg',
       'assets/providers/codex.svg',
       'assets/providers/grok.svg',
+      'assets/providers/gemini.svg',
     ]) {
       test('$path is bundled and non-empty', () async {
         final data = await rootBundle.load(path);
@@ -81,6 +82,14 @@ void main() {
     expect(svg.colorFilter, isNotNull);
   });
 
+  testWidgets('gemini renders its full-color SVG', (tester) async {
+    await tester.pumpWidget(
+      _wrap(const ProviderIcon(providerId: 'gemini', color: Colors.red)),
+    );
+    final svg = tester.widget<SvgPicture>(find.byType(SvgPicture));
+    expect(svg.colorFilter, isNull);
+  });
+
   testWidgets('unknown providers fall back to a generic icon', (tester) async {
     await tester.pumpWidget(
       _wrap(const ProviderIcon(providerId: 'future-cli')),
@@ -108,6 +117,7 @@ void main() {
     expect(providerName('opencode'), 'OpenCode');
     expect(providerName('codex'), 'Codex CLI');
     expect(providerName('grok'), 'Grok Code');
+    expect(providerName('gemini'), 'Gemini CLI');
     expect(providerName('unknown'), 'unknown');
   });
 }

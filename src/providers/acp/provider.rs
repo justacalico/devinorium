@@ -1,8 +1,9 @@
 //! ACP (Agent Client Protocol) provider.
 //!
-//! Spawns `<bin> acp` and communicates over JSON-RPC stdio using the
-//! `agent-client-protocol` crate. The per-agent differences (Devin CLI,
-//! OpenCode) live in [`super::spec`]. Permission requests can be forwarded to
+//! Spawns the agent's ACP stdio server and communicates over JSON-RPC using
+//! the `agent-client-protocol` crate. The per-agent differences (Devin CLI,
+//! OpenCode, Grok Code, Gemini CLI) live in [`super::spec`]. Permission
+//! requests can be forwarded to
 //! the API layer through the optional [`SendOptions::permission_callback`]; if
 //! no callback is configured, permission requests are rejected.
 
@@ -22,8 +23,8 @@ use agent_client_protocol::{
         ElicitationAction, ElicitationCapabilities, ElicitationFormCapabilities, ImageContent,
         InitializeRequest, LoadSessionRequest, McpServer, NewSessionRequest, NewSessionResponse,
         PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
-        RequestPermissionResponse, SessionConfigOption, SessionId, SessionNotification,
-        SessionUpdate, SetSessionModeRequest, TextContent,
+        RequestPermissionResponse, SessionConfigOption, SessionId, SessionModeState,
+        SessionNotification, SessionUpdate, SetSessionModeRequest, TextContent,
     },
     schema::ProtocolVersion as ProtocolVersionEnum,
     AcpAgent, Agent, Client, ConnectionTo,
@@ -179,7 +180,11 @@ impl AcpProvider {
         let replaying = Arc::new(AtomicBool::new(maybe_session.is_some()));
 
         let (env_args, config_root) = self.agent_config_env(options).await?;
-        let agent_args: Vec<String> = env_args.into_iter().chain(self.agent_args()).collect();
+        let agent_args: Vec<String> = env_args
+            .into_iter()
+            .chain(self.agent_args())
+            .chain(self.kind.extra_spawn_args(&options.model))
+            .collect();
 
         let result = Client
             .builder()
@@ -295,7 +300,7 @@ impl AcpProvider {
                             .collect()
                     };
 
-                    let (session_id, config_options) = if can_load {
+                    let (session_id, config_options, modes) = if can_load {
                         let sid = maybe_session.as_deref().unwrap();
                         match connection
                             .send_request(
@@ -308,7 +313,9 @@ impl AcpProvider {
                             .block_task()
                             .await
                         {
-                            Ok(load_resp) => (sid.to_string(), load_resp.config_options),
+                            Ok(load_resp) => {
+                                (sid.to_string(), load_resp.config_options, load_resp.modes)
+                            }
                             Err(e) => {
                                 tracing::warn!(
                                     session_id = %sid,
@@ -341,21 +348,43 @@ impl AcpProvider {
                     )
                     .await?;
 
-                    if let Some(mode_id) = self.kind.session_mode_id(&options.interaction_mode) {
-                        if let Err(e) = connection
-                            .send_request(SetSessionModeRequest::new(
-                                SessionId::new(session_id.clone()),
-                                mode_id,
-                            ))
-                            .block_task()
-                            .await
-                        {
-                            tracing::warn!(
+                    if let Some(mode_id) = self
+                        .kind
+                        .session_mode_id(&options.interaction_mode, &options.permission_mode)
+                    {
+                        // Gemini advertises its approval modes per session;
+                        // an id the agent did not offer (`plan` needs plan
+                        // support enabled) would just error, so skip it.
+                        let send = match (self.kind, modes.as_ref()) {
+                            (AgentKind::Gemini, Some(m)) => {
+                                m.available_modes.iter().any(|m| m.id == mode_id)
+                            }
+                            (AgentKind::Gemini, None) => false,
+                            _ => true,
+                        };
+                        if !send {
+                            tracing::debug!(
                                 session_id = %session_id,
-                                provider = %self.kind.id(),
-                                error = %e,
-                                "failed to set acp session mode"
+                                mode = %mode_id.0,
+                                "acp agent did not advertise this session mode; skipping set_mode"
                             );
+                        }
+                        if send {
+                            if let Err(e) = connection
+                                .send_request(SetSessionModeRequest::new(
+                                    SessionId::new(session_id.clone()),
+                                    mode_id,
+                                ))
+                                .block_task()
+                                .await
+                            {
+                                tracing::warn!(
+                                    session_id = %session_id,
+                                    provider = %self.kind.id(),
+                                    error = %e,
+                                    "failed to set acp session mode"
+                                );
+                            }
                         }
                     }
 
@@ -495,6 +524,9 @@ impl AcpProvider {
             AgentKind::Devin => self.fetch_devin_models().await,
             AgentKind::Opencode => models::fetch_opencode_models(&self.bin).await,
             AgentKind::Grok => models::fetch_grok_models(&self.bin).await,
+            // Gemini only reports its catalog inside an authenticated
+            // session response, so the static list is the catalog.
+            AgentKind::Gemini => Ok(models::static_models(AgentKind::Gemini)),
         }
     }
 
@@ -649,12 +681,16 @@ async fn new_session(
     connection: &ConnectionTo<Agent>,
     cwd: &Path,
     mcp_servers: Vec<McpServer>,
-) -> anyhow::Result<(String, Option<Vec<SessionConfigOption>>)> {
+) -> anyhow::Result<(
+    String,
+    Option<Vec<SessionConfigOption>>,
+    Option<SessionModeState>,
+)> {
     let resp: NewSessionResponse = connection
         .send_request(NewSessionRequest::new(cwd.to_path_buf()).mcp_servers(mcp_servers))
         .block_task()
         .await?;
-    Ok((resp.session_id.to_string(), resp.config_options))
+    Ok((resp.session_id.to_string(), resp.config_options, resp.modes))
 }
 
 /// Split a thread's allowlist text into rules: entries are comma or
@@ -1073,6 +1109,142 @@ mod tests {
             !sets.iter().any(|(id, _)| id == "reasoning_effort"),
             "{sets:?}"
         );
+    }
+
+    /// Fake ACP agent for Gemini tests: records its argv (the model flag),
+    /// logs every request line, advertises the given approval modes on
+    /// `session/new`, and ends each prompt turn immediately.
+    #[cfg(unix)]
+    fn fake_gemini_agent(with_plan: bool) -> (tempfile::TempDir, String, PathBuf, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("fake-gemini");
+        let log = dir.path().join("requests.log");
+        let argv = dir.path().join("argv.log");
+        let plan_mode = if with_plan {
+            r#",{"id":"plan","name":"Plan"}"#
+        } else {
+            ""
+        };
+        fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\n\
+                 printf '%s\\n' \"$*\" > '{}'\n\
+                 while IFS= read -r line; do\n\
+                 \x20 id=$(printf '%s' \"$line\" | sed -n 's/.*\"id\":\\(\"[^\"]*\"\\|[0-9][0-9]*\\).*/\\1/p')\n\
+                 \x20 [ -z \"$id\" ] && continue\n\
+                 \x20 printf '%s\\n' \"$line\" >> '{}'\n\
+                 \x20 case \"$line\" in\n\
+                 \x20   *'\"initialize\"'*)\n\
+                 \x20     printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":'$id',\"result\":{{\"protocolVersion\":1}}}}' ;;\n\
+                 \x20   *'\"session/new\"'*)\n\
+                 \x20     printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":'$id',\"result\":{{\"sessionId\":\"gemini-session\",\"modes\":{{\"currentModeId\":\"default\",\"availableModes\":[{{\"id\":\"default\",\"name\":\"Default\"}},{{\"id\":\"autoEdit\",\"name\":\"Auto Edit\"}},{{\"id\":\"yolo\",\"name\":\"YOLO\"}}{plan_mode}]}},\"configOptions\":[]}}}}' ;;\n\
+                 \x20   *'\"session/prompt\"'*)\n\
+                 \x20     printf '{{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{{\"stopReason\":\"end_turn\"}}}}\\n' \"$id\" ;;\n\
+                 \x20   *)\n\
+                 \x20     printf '{{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{{}}}}\\n' \"$id\" ;;\n\
+                 \x20 esac\n\
+                 done\n",
+                argv.display(),
+                log.display(),
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (dir, script.to_string_lossy().to_string(), log, argv)
+    }
+
+    /// The `modeId` params of every logged `session/set_mode` request.
+    #[cfg(unix)]
+    fn logged_mode_sets(log: &Path) -> Vec<String> {
+        fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .filter(|v| v["method"] == "session/set_mode")
+            .map(|v| {
+                v["params"]["modeId"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn gemini_start_passes_model_flag_and_sets_advertised_mode() {
+        let (_dir, bin, log, argv) = fake_gemini_agent(true);
+        let provider = AcpProvider::new(AgentKind::Gemini, bin, "auto".into());
+        let workdir = tempfile::tempdir().unwrap();
+        let mut opts = send_options(workdir.path().to_path_buf(), None);
+        opts.model = "gemini-2.5-flash".into();
+        opts.permission_mode = "bypass".into();
+
+        let res = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            provider.start(StartRequest {
+                prompt: "hi".into(),
+                options: opts,
+            }),
+        )
+        .await
+        .expect("prompt timed out")
+        .unwrap();
+
+        assert_eq!(res.session_id, "gemini-session");
+        let args = fs::read_to_string(&argv).unwrap();
+        assert!(
+            args.contains("--experimental-acp --model gemini-2.5-flash"),
+            "{args}"
+        );
+        assert_eq!(logged_mode_sets(&log), vec!["yolo".to_string()]);
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn gemini_plan_mode_is_sent_when_advertised() {
+        let (_dir, bin, log, _argv) = fake_gemini_agent(true);
+        let provider = AcpProvider::new(AgentKind::Gemini, bin, "auto".into());
+        let workdir = tempfile::tempdir().unwrap();
+        let mut opts = send_options(workdir.path().to_path_buf(), None);
+        opts.interaction_mode = "plan".into();
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            provider.start(StartRequest {
+                prompt: "hi".into(),
+                options: opts,
+            }),
+        )
+        .await
+        .expect("prompt timed out")
+        .unwrap();
+
+        assert_eq!(logged_mode_sets(&log), vec!["plan".to_string()]);
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn gemini_skips_mode_the_agent_did_not_advertise() {
+        let (_dir, bin, log, _argv) = fake_gemini_agent(false);
+        let provider = AcpProvider::new(AgentKind::Gemini, bin, "auto".into());
+        let workdir = tempfile::tempdir().unwrap();
+        let mut opts = send_options(workdir.path().to_path_buf(), None);
+        opts.interaction_mode = "plan".into();
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            provider.start(StartRequest {
+                prompt: "hi".into(),
+                options: opts,
+            }),
+        )
+        .await
+        .expect("prompt timed out")
+        .unwrap();
+
+        assert!(logged_mode_sets(&log).is_empty());
     }
 
     /// Fake ACP agent for session/load tests: logs every request line,

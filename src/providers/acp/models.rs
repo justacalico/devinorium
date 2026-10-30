@@ -73,6 +73,33 @@ pub fn static_models(kind: AgentKind) -> Vec<ModelInfo> {
                 "xhigh".into(),
             ],
         }],
+        AgentKind::Gemini => vec![
+            gemini_model("auto", "Auto", false),
+            gemini_model("gemini-3.1-pro-preview", "Gemini 3.1 Pro (Preview)", true),
+            gemini_model("gemini-3-pro-preview", "Gemini 3 Pro (Preview)", false),
+            gemini_model("gemini-3-flash-preview", "Gemini 3 Flash (Preview)", false),
+            gemini_model("gemini-2.5-pro", "Gemini 2.5 Pro", false),
+            gemini_model("gemini-2.5-flash", "Gemini 2.5 Flash", false),
+            gemini_model("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite", false),
+        ],
+    }
+}
+
+/// A Gemini catalog entry: the current family all shares a 1M context
+/// window and 64K output cap.
+fn gemini_model(id: &str, label: &str, is_new: bool) -> ModelInfo {
+    ModelInfo {
+        id: id.into(),
+        label: label.into(),
+        cost_tier: String::new(),
+        family: "gemini".into(),
+        cost_summary: String::new(),
+        max_context_tokens: 1_048_576,
+        max_output_tokens: 65_536,
+        is_new,
+        is_beta: false,
+        default_reasoning_effort: None,
+        supported_reasoning_efforts: vec![],
     }
 }
 

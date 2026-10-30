@@ -180,7 +180,22 @@ fn registry_knows_devin_cli() {
 fn provider_name_looks_up_display_name() {
     assert_eq!(providers::provider_name("devin-cli"), Some("Devin CLI"));
     assert_eq!(providers::provider_name("grok"), Some("Grok Code"));
+    assert_eq!(providers::provider_name("gemini"), Some("Gemini CLI"));
     assert_eq!(providers::provider_name("nope"), None);
+}
+
+#[test]
+fn registry_knows_gemini() {
+    let providers = providers::available_providers();
+    let gemini = providers.iter().find(|p| p.id == "gemini").unwrap();
+    assert_eq!(gemini.name, "Gemini CLI");
+    assert_eq!(providers::default_command("gemini"), "gemini");
+    providers::build_provider(providers::ProviderConfig {
+        id: "gemini".to_string(),
+        command: "gemini".to_string(),
+        default_model: "auto".to_string(),
+    })
+    .expect("build gemini provider");
 }
 
 #[test]
@@ -240,6 +255,53 @@ async fn provider_grok_start() {
         })
         .await
         .expect("grok start");
+    assert!(!start.session_id.is_empty());
+    assert!(!start.reply.is_empty());
+}
+
+/// Live check that `gemini --experimental-acp` answers a prompt through the
+/// ACP provider. Ignored by default; run with `cargo test -- --ignored` on a
+/// host where `gemini` is logged in.
+#[tokio::test]
+#[ignore = "requires gemini CLI + auth"]
+async fn provider_gemini_start() {
+    if std::process::Command::new("gemini")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_err()
+    {
+        eprintln!("skipping: gemini not on PATH");
+        return;
+    }
+    let p = providers::acp::AcpProvider::new(
+        AgentKind::Gemini,
+        "gemini".to_string(),
+        "auto".to_string(),
+    );
+    let start = p
+        .start(StartRequest {
+            prompt: "Reply with exactly: GEMINI_OK".to_string(),
+            options: SendOptions {
+                model: "auto".to_string(),
+                reasoning_effort: None,
+                permissions: None,
+                permission_callback: None,
+                ask_callback: None,
+                part_callback: None,
+                session_callback: None,
+                working_dir: tmp_workdir(),
+                permission_mode: "normal".to_string(),
+                interaction_mode: "code".into(),
+                cancel_signal: None,
+                max_output_tokens: None,
+                mcp_servers: Vec::new(),
+                attachments: vec![],
+            },
+        })
+        .await
+        .expect("gemini start");
     assert!(!start.session_id.is_empty());
     assert!(!start.reply.is_empty());
 }
