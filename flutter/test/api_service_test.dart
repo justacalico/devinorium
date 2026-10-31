@@ -276,7 +276,7 @@ void main() {
           'latest_version': '0.78.0',
           'latest_tag': 'v0.78.0',
           'release_url': 'https://example/releases/v0.78.0',
-          'asset_name': 'devinorium-v0.78.0-linux-x86_64',
+          'asset_name': 'devinorium-v0.78.0-server-linux-x86_64',
           'update_available': true,
           'updatable': true,
           'reason': null,
@@ -287,7 +287,7 @@ void main() {
       expect(check.currentVersion, '0.77.2');
       expect(check.latestVersion, '0.78.0');
       expect(check.latestTag, 'v0.78.0');
-      expect(check.assetName, 'devinorium-v0.78.0-linux-x86_64');
+      expect(check.assetName, 'devinorium-v0.78.0-server-linux-x86_64');
       expect(check.updateAvailable, isTrue);
       expect(check.updatable, isTrue);
       expect(check.reason, isNull);

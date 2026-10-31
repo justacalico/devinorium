@@ -3,7 +3,7 @@
 //! the process.
 //!
 //! Release binaries are published per platform as
-//! `devinorium-<tag>-<platform>` next to a `SHA256SUMS.txt` covering every
+//! `devinorium-<tag>-server-<platform>` next to a `SHA256SUMS.txt` covering every
 //! asset. Only stable `vX.Y.Z` tags are considered; the moving `nightly`
 //! release is ignored.
 
@@ -523,15 +523,17 @@ pub fn platform_asset_suffix() -> Option<&'static str> {
     return Some("linux-arm64");
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
     return Some("windows-x86_64.exe");
+    #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
+    return Some("windows-arm64.exe");
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     return Some("macos-arm64");
     #[allow(unreachable_code)]
     None
 }
 
-/// `devinorium-v0.78.0-linux-x86_64` style asset names used by CI.
+/// `devinorium-v0.78.0-server-linux-x86_64` style asset names used by CI.
 fn asset_name(tag: &str, suffix: &str) -> String {
-    format!("devinorium-{tag}-{suffix}")
+    format!("devinorium-{tag}-server-{suffix}")
 }
 
 /// The download URL for a named release asset, preferring the direct
@@ -844,26 +846,29 @@ mod tests {
     fn asset_name_uses_tag_and_suffix() {
         assert_eq!(
             asset_name("v0.78.0", "linux-x86_64"),
-            "devinorium-v0.78.0-linux-x86_64"
+            "devinorium-v0.78.0-server-linux-x86_64"
         );
         assert_eq!(
             asset_name("0.78.0", "windows-x86_64.exe"),
-            "devinorium-0.78.0-windows-x86_64.exe"
+            "devinorium-0.78.0-server-windows-x86_64.exe"
         );
     }
 
     #[test]
     fn parse_sha256sums_reads_standard_lines() {
-        let text = "abc123  devinorium-v1-linux-x86_64\n\
-                    def456 *devinorium-v1-windows-x86_64.exe\n\
+        let text = "abc123  devinorium-v1-server-linux-x86_64\n\
+                    def456 *devinorium-v1-server-windows-x86_64.exe\n\
                     \n\
                     bad-line-without-name\n";
         let sums = parse_sha256sums(text);
         assert_eq!(
             sums,
             vec![
-                ("devinorium-v1-linux-x86_64".into(), "abc123".into()),
-                ("devinorium-v1-windows-x86_64.exe".into(), "def456".into()),
+                ("devinorium-v1-server-linux-x86_64".into(), "abc123".into()),
+                (
+                    "devinorium-v1-server-windows-x86_64.exe".into(),
+                    "def456".into()
+                ),
             ]
         );
     }
@@ -882,12 +887,13 @@ mod tests {
 
     #[tokio::test]
     async fn check_reports_update_for_newer_stable_tag() {
+        let Some(suffix) = platform_asset_suffix() else {
+            return;
+        };
+        let asset = asset_name("v9999.0.0", suffix);
         let base = mock_releases_server(serde_json::json!([
             release("nightly", &[]),
-            release(
-                "v9999.0.0",
-                &[("devinorium-v9999.0.0-linux-x86_64", "http://x/bin")]
-            ),
+            release("v9999.0.0", &[(asset.as_str(), "http://x/bin")]),
             release("v0.0.1", &[]),
         ]))
         .await;
