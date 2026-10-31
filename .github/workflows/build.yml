@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       build_all:
-        description: 'Build all targets (server, server-linux-arm64, server-windows, server-macos, android, linux, linux-arm64, windows, windows-arm64, macos, ios)'
+        description: 'Build all targets (server, server-linux-arm64, server-windows, server-windows-arm64, server-macos, android, linux, linux-arm64, windows, windows-arm64, macos, ios)'
         type: boolean
         default: true
       create_release:
@@ -69,7 +69,7 @@ jobs:
             BUILD_ALL="true"
           fi
           if [ "$BUILD_ALL" = "true" ]; then
-            TARGETS='[{"target":"server","os":"ubuntu-latest"},{"target":"server-linux-arm64","os":"ubuntu-24.04-arm","flutter":"git"},{"target":"server-windows","os":"windows-latest"},{"target":"server-macos","os":"macos-latest","flutter_arch":"arm64"},{"target":"android","os":"ubuntu-latest"},{"target":"linux","os":"ubuntu-latest"},{"target":"linux-arm64","os":"ubuntu-24.04-arm","flutter":"git"},{"target":"windows","os":"windows-latest"},{"target":"windows-arm64","os":"windows-11-arm","flutter":"git"},{"target":"macos","os":"macos-latest","flutter_arch":"arm64"},{"target":"ios","os":"macos-latest","flutter_arch":"arm64"}]'
+            TARGETS='[{"target":"server","os":"ubuntu-latest"},{"target":"server-linux-arm64","os":"ubuntu-24.04-arm","flutter":"git"},{"target":"server-windows","os":"windows-latest"},{"target":"server-windows-arm64","os":"windows-11-arm","flutter":"git"},{"target":"server-macos","os":"macos-latest","flutter_arch":"arm64"},{"target":"android","os":"ubuntu-latest"},{"target":"linux","os":"ubuntu-latest"},{"target":"linux-arm64","os":"ubuntu-24.04-arm","flutter":"git"},{"target":"windows","os":"windows-latest"},{"target":"windows-arm64","os":"windows-11-arm","flutter":"git"},{"target":"macos","os":"macos-latest","flutter_arch":"arm64"},{"target":"ios","os":"macos-latest","flutter_arch":"arm64"}]'
           else
             TARGETS='[{"target":"server","os":"ubuntu-latest"}]'
           fi
@@ -195,7 +195,7 @@ jobs:
           echo "$HOME/flutter-sdk/bin" >> "$GITHUB_PATH"
           if [ "${{ matrix.target }}" = "linux-arm64" ]; then
             "$HOME/flutter-sdk/bin/flutter" precache --linux
-          elif [ "${{ matrix.target }}" = "server-linux-arm64" ]; then
+          elif [ "${{ matrix.target }}" = "server-linux-arm64" ] || [ "${{ matrix.target }}" = "server-windows-arm64" ]; then
             "$HOME/flutter-sdk/bin/flutter" precache --web
           else
             "$HOME/flutter-sdk/bin/flutter" precache --windows
@@ -281,13 +281,13 @@ jobs:
           cargo build --release
           mkdir -p artifacts
           if [ "${{ matrix.target }}" = "server-linux-arm64" ]; then
-            cp target/release/devinorium artifacts/devinorium-linux-arm64
+            cp target/release/devinorium artifacts/devinorium-server-linux-arm64
           else
-            cp target/release/devinorium artifacts/devinorium
+            cp target/release/devinorium artifacts/devinorium-server-linux-x86_64
           fi
 
       - name: Build server binary (Windows/macOS)
-        if: matrix.target == 'server-windows' || matrix.target == 'server-macos'
+        if: matrix.target == 'server-windows' || matrix.target == 'server-windows-arm64' || matrix.target == 'server-macos'
         shell: bash
         run: |
           set -euo pipefail
@@ -295,9 +295,11 @@ jobs:
           cargo build --release
           mkdir -p artifacts
           if [ "${{ matrix.target }}" = "server-windows" ]; then
-            cp target/release/devinorium.exe artifacts/devinorium-windows-x86_64.exe
+            cp target/release/devinorium.exe artifacts/devinorium-server-windows-x86_64.exe
+          elif [ "${{ matrix.target }}" = "server-windows-arm64" ]; then
+            cp target/release/devinorium.exe artifacts/devinorium-server-windows-arm64.exe
           else
-            cp target/release/devinorium artifacts/devinorium-macos-arm64
+            cp target/release/devinorium artifacts/devinorium-server-macos-arm64
           fi
 
       - name: Build bundled server binary
@@ -534,21 +536,24 @@ jobs:
           set -euo pipefail
           mkdir -p release-assets
           find artifacts -type f -name 'devinorium*' -exec cp {} release-assets/ \;
-          if [ -f release-assets/devinorium ]; then
-            chmod +x release-assets/devinorium
-            mv release-assets/devinorium "release-assets/devinorium-${{ needs.setup.outputs.version }}-linux-x86_64"
-          fi
-          if [ -f release-assets/devinorium-linux-arm64 ]; then
-            chmod +x release-assets/devinorium-linux-arm64
-            mv release-assets/devinorium-linux-arm64 "release-assets/devinorium-${{ needs.setup.outputs.version }}-linux-arm64"
-          fi
-          if [ -f release-assets/devinorium-windows-x86_64.exe ]; then
-            mv release-assets/devinorium-windows-x86_64.exe "release-assets/devinorium-${{ needs.setup.outputs.version }}-windows-x86_64.exe"
-          fi
-          if [ -f release-assets/devinorium-macos-arm64 ]; then
-            chmod +x release-assets/devinorium-macos-arm64
-            mv release-assets/devinorium-macos-arm64 "release-assets/devinorium-${{ needs.setup.outputs.version }}-macos-arm64"
-          fi
+          # Server binaries also ship under their pre-rename asset names so
+          # servers installed before the -server scheme can still self-update.
+          VER="${{ needs.setup.outputs.version }}"
+          server_asset() {
+            src="release-assets/devinorium-server-$1$2"
+            if [ ! -f "$src" ]; then
+              echo "Expected server artifact $src is missing" >&2
+              exit 1
+            fi
+            chmod +x "$src"
+            mv "$src" "release-assets/devinorium-$VER-server-$1$2"
+            cp "release-assets/devinorium-$VER-server-$1$2" "release-assets/devinorium-$VER-$1$2"
+          }
+          server_asset linux-x86_64 ""
+          server_asset linux-arm64 ""
+          server_asset windows-x86_64 ".exe"
+          server_asset windows-arm64 ".exe"
+          server_asset macos-arm64 ""
           ls -la release-assets/
 
       - name: Generate checksums
@@ -666,21 +671,24 @@ jobs:
           set -euo pipefail
           mkdir -p release-assets
           find artifacts -type f -name 'devinorium*' -exec cp {} release-assets/ \;
-          if [ -f release-assets/devinorium ]; then
-            chmod +x release-assets/devinorium
-            mv release-assets/devinorium "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-linux-x86_64"
-          fi
-          if [ -f release-assets/devinorium-linux-arm64 ]; then
-            chmod +x release-assets/devinorium-linux-arm64
-            mv release-assets/devinorium-linux-arm64 "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-linux-arm64"
-          fi
-          if [ -f release-assets/devinorium-windows-x86_64.exe ]; then
-            mv release-assets/devinorium-windows-x86_64.exe "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-windows-x86_64.exe"
-          fi
-          if [ -f release-assets/devinorium-macos-arm64 ]; then
-            chmod +x release-assets/devinorium-macos-arm64
-            mv release-assets/devinorium-macos-arm64 "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-macos-arm64"
-          fi
+          # Server binaries also ship under their pre-rename asset names so
+          # servers installed before the -server scheme can still self-update.
+          VER="${{ steps.meta.outputs.release_tag }}"
+          server_asset() {
+            src="release-assets/devinorium-server-$1$2"
+            if [ ! -f "$src" ]; then
+              echo "Expected server artifact $src is missing" >&2
+              exit 1
+            fi
+            chmod +x "$src"
+            mv "$src" "release-assets/devinorium-$VER-server-$1$2"
+            cp "release-assets/devinorium-$VER-server-$1$2" "release-assets/devinorium-$VER-$1$2"
+          }
+          server_asset linux-x86_64 ""
+          server_asset linux-arm64 ""
+          server_asset windows-x86_64 ".exe"
+          server_asset windows-arm64 ".exe"
+          server_asset macos-arm64 ""
           TAG="${{ steps.meta.outputs.release_tag }}"
           git archive --format=tar.gz --prefix="devinorium-${TAG#v}/" \
             -o "release-assets/devinorium-${TAG}-source.tar.gz" "$TAG"
@@ -705,7 +713,7 @@ jobs:
             **Commit:** ${{ github.sha }}
 
             ### Artifacts
-            - Server binaries (Linux x86_64 + arm64, Windows x86_64, macOS arm64)
+            - Server binaries (Linux x86_64 + arm64, Windows x86_64 + arm64, macOS arm64)
             - Android APK + AAB
             - Linux desktop bundle (x86_64 + arm64: tar.gz, zip, deb, rpm)
             - Windows desktop (x86_64 + arm64: installer exe, portable zip)

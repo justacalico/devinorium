@@ -21,7 +21,8 @@ if [ ! -f "$BIN" ]; then
   exit 1
 fi
 
-ASSET="devinorium-${VERSION_TAG}-linux-x86_64"
+ASSET="devinorium-${VERSION_TAG}-server-linux-x86_64"
+LEGACY_ASSET="devinorium-${VERSION_TAG}-linux-x86_64"
 
 # Generate release notes for this version only so a v10.1.1 release does not
 # include the changelog of every previous release.
@@ -35,7 +36,9 @@ cog changelog --at "$VERSION_TAG" > "$NOTES_FILE"
 # and build-linux CI jobs and pulled in via the release job's `needs:`. Missing
 # frontend files are skipped with a warning so a partial build never blocks the
 # release.
-ASSETS=("${BIN}#${ASSET}")
+# The legacy name is kept alongside so servers installed before the -server
+# rename can still self-update.
+ASSETS=("${BIN}#${ASSET}" "${BIN}#${LEGACY_ASSET}")
 
 for entry in \
   "devinorium-android.apk:devinorium-android-${VERSION_TAG}.apk" \
