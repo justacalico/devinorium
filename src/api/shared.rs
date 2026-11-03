@@ -99,6 +99,17 @@ fn render_markdown(input: &str) -> String {
             title,
             id,
         }),
+        Event::Start(Tag::Image {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => Event::Start(Tag::Image {
+            link_type,
+            dest_url: sanitize_link_url(&dest_url),
+            title,
+            id,
+        }),
         other => other,
     });
     let mut out = String::with_capacity(input.len() * 2);
@@ -194,21 +205,15 @@ fn render_message(msg: &SharedMessage, agent_label: &str) -> String {
         out.push_str("</p>");
     }
 
-    if msg.parts.is_empty() {
-        if let Some(thinking) = msg.thinking.as_deref().filter(|t| !t.is_empty()) {
-            out.push_str(&render_thinking(thinking));
-        }
-        if msg.role == "error" {
-            out.push_str("<pre class=\"error-body\">");
-            out.push_str(&escape_html(&msg.content));
-            out.push_str("</pre>");
-        } else if !msg.content.is_empty() {
-            out.push_str("<div class=\"body\">");
-            out.push_str(&render_markdown(&msg.content));
-            out.push_str("</div>");
-        }
-    } else {
-        let mut thinking_open = false;
+    // Parts carry the ordered truth, except when the stored message was
+    // truncated — then only tool calls survive and the text lives in
+    // `content`/`thinking`. Either way, tool calls still render in order.
+    let has_text_parts = msg
+        .parts
+        .iter()
+        .any(|p| matches!(p, MessagePart::Text { .. } | MessagePart::Thinking { .. }));
+    let mut thinking_open = false;
+    if has_text_parts {
         for part in &msg.parts {
             match part {
                 MessagePart::Text { content } => {
@@ -246,6 +251,24 @@ fn render_message(msg: &SharedMessage, agent_label: &str) -> String {
         }
         if thinking_open {
             out.push_str("</pre></details>");
+        }
+    } else {
+        if let Some(thinking) = msg.thinking.as_deref().filter(|t| !t.is_empty()) {
+            out.push_str(&render_thinking(thinking));
+        }
+        if msg.role == "error" {
+            out.push_str("<pre class=\"error-body\">");
+            out.push_str(&escape_html(&msg.content));
+            out.push_str("</pre>");
+        } else if !msg.content.is_empty() {
+            out.push_str("<div class=\"body\">");
+            out.push_str(&render_markdown(&msg.content));
+            out.push_str("</div>");
+        }
+        for part in &msg.parts {
+            if let MessagePart::ToolCall { payload } = part {
+                out.push_str(&render_tool_call(payload));
+            }
         }
     }
 
@@ -437,6 +460,25 @@ mod tests {
         // Plain content goes through markdown, so markup chars are treated
         // as markdown and raw html is escaped, never executed.
         assert!(html.contains("&lt;b&gt;raw&lt;/b&gt;"));
+    }
+
+    #[test]
+    fn truncated_message_keeps_text_and_tool_calls() {
+        let mut m = msg("assistant", "the visible reply text");
+        m.parts = vec![MessagePart::tool_call(crate::providers::ToolCallEvent {
+            id: "tc1".into(),
+            title: "Edit file".into(),
+            kind: "edit".into(),
+            status: "completed".into(),
+            command: None,
+            output: None,
+            output_preview: None,
+            changed_files: vec![],
+            diffs: vec![],
+        })];
+        let html = render_message(&m, "Assistant");
+        assert!(html.contains("the visible reply text"));
+        assert!(html.contains("Edit file"));
     }
 
     #[test]
