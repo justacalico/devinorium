@@ -2,6 +2,20 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.113.0 - 2026-11-03
+#### Features
+- 会话菜单新增分享与取消分享 - (636efb9) - HttpAnimations
+- 会话公开分享链接与 /shared 页面 - (e8940ab) - HttpAnimations
+#### Bug Fixes
+- 服务器不可达时启动不再卡在加载页 - (8de6b9b) - HttpAnimations
+- 内联样式常量以满足 1.88 clippy - (b576f0a) - HttpAnimations
+- 分享页转义代理名并移除未使用的查询 - (758ff9f) - HttpAnimations
+- 修复 CI 上的 clippy 与 analyze 告警 - (b88a028) - HttpAnimations
+- 修复审查发现的分享问题 - (165d4bb) - HttpAnimations
+- 分享页消毒图片链接并保留截断消息的文本 - (d2d76fe) - HttpAnimations
+
+- - -
+
 ## v0.112.0 - 2026-10-30
 #### Features
 - 设置页新增代理网页访问开关 - (c8e4c10) - HttpAnimations
