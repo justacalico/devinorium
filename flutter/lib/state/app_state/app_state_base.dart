@@ -688,6 +688,10 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> pinProject(int id, bool pinned);
   Future<void> renameThread(String id, String title);
   Future<void> pinThread(String id, bool pinned);
+  /// Publish or refresh the thread's public share; returns the share URL,
+  /// or null when the request failed (`globalError` carries the reason).
+  Future<String?> shareThread(String id);
+  Future<void> unshareThread(String id);
   Future<void> createNewThread({int? projectId});
   Future<void> openThread(String id);
   Future<void> saveProvider({

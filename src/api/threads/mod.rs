@@ -15,6 +15,7 @@ pub(crate) mod resend;
 pub(crate) mod routes;
 pub(crate) mod runs;
 pub(crate) mod send;
+pub(crate) mod share;
 pub(crate) mod skills;
 pub(crate) mod stream;
 pub(crate) mod thread_refs;
@@ -41,6 +42,10 @@ pub fn router() -> Router<AppState> {
                 .delete(routes::delete),
         )
         .route("/api/threads/:id/pin", post(routes::pin))
+        .route(
+            "/api/threads/:id/share",
+            post(share::share).delete(share::unshare),
+        )
         .route("/api/threads/:id/viewed", post(routes::mark_viewed))
         .route("/api/threads/:id/context", get(context::get_context))
         .route(
@@ -120,6 +125,8 @@ pub struct ThreadOut {
     /// The sidebar shows the "done" tag only for unread threads, so opening
     /// one clears the badge until new output arrives.
     pub unread: bool,
+    /// Public share id when the thread is published at `/shared/<id>`.
+    pub share_id: Option<String>,
 }
 
 impl From<ThreadRow> for ThreadOut {
@@ -148,6 +155,7 @@ impl From<ThreadRow> for ThreadOut {
             max_output_tokens: t.max_output_tokens.and_then(|v| u64::try_from(v).ok()),
             last_message_role: t.last_message_role,
             unread: t.unread,
+            share_id: t.share_id,
         }
     }
 }
@@ -396,6 +404,7 @@ mod tests {
             context_cleared_seq: 0,
             last_message_role: Some("assistant".into()),
             unread: true,
+            share_id: None,
         };
         let out = ThreadOut::from(row);
         assert_eq!(out.id, "th-1");

@@ -313,6 +313,49 @@ mixin ThreadListStore on AppStateBase {
   }
 
   @override
+  Future<String?> shareThread(String id) async {
+    _globalError = '';
+    notifyListeners();
+    try {
+      final updated = await api.shareThread(id);
+      final index = _threads.indexWhere((t) => t.id == id);
+      if (index >= 0) {
+        _threads = [..._threads];
+        _threads[index] = updated;
+      }
+      _globalError = '';
+      notifyListeners();
+      final shareId = updated.shareId;
+      return shareId == null ? null : await api.shareUrl(shareId);
+    } catch (e) {
+      debugLogFailure('threadList.shareThread', e, threadId: id);
+      _globalError = '$e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  @override
+  Future<void> unshareThread(String id) async {
+    _globalError = '';
+    notifyListeners();
+    try {
+      final updated = await api.unshareThread(id);
+      final index = _threads.indexWhere((t) => t.id == id);
+      if (index >= 0) {
+        _threads = [..._threads];
+        _threads[index] = updated;
+      }
+      _globalError = '';
+      notifyListeners();
+    } catch (e) {
+      debugLogFailure('threadList.unshareThread', e, threadId: id);
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  @override
   Future<void> createNewThread({int? projectId}) async {
     final targetId = projectId ?? _activeProjectId;
     if (targetId == null) {

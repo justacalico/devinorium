@@ -219,7 +219,8 @@ impl Db {
              EXISTS(SELECT 1 FROM messages unseen
                     WHERE unseen.thread_id = threads.id
                       AND unseen.role IN ('assistant', 'error')
-                      AND unseen.id > threads.viewed_message_id) AS unread
+                      AND unseen.id > threads.viewed_message_id) AS unread,
+             (SELECT id FROM thread_shares WHERE thread_shares.thread_id = threads.id) AS share_id
              FROM threads
              WHERE project_id = ? AND user_id = ?
              ORDER BY pinned DESC, updated_at DESC, id DESC"

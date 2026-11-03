@@ -444,6 +444,35 @@ class _ThreadWorktreeLabel extends StatelessWidget {
   }
 }
 
+Future<void> _shareAndCopy(BuildContext context, Thread thread) async {
+  final state = context.read<AppState>();
+  final existing = thread.shareId;
+  // An existing share copies its live URL only; re-publishing newer
+  // messages requires an explicit Stop sharing + Share round trip.
+  final url = existing != null
+      ? await state.api.shareUrl(existing)
+      : await state.shareThread(thread.id);
+  if (!context.mounted) return;
+  if (url == null) {
+    if (state.globalError.isNotEmpty) {
+      showAppMessage(
+        context,
+        state.globalError,
+        kind: MessageKind.error,
+      );
+    }
+    return;
+  }
+  await Clipboard.setData(ClipboardData(text: url));
+  if (!context.mounted) return;
+  showAppMessage(
+    context,
+    l10n(context).shareLinkCopied,
+    kind: MessageKind.success,
+    duration: const Duration(seconds: 1),
+  );
+}
+
 String _worktreeTooltip(Thread thread, String worktreeName) {
   if (thread.worktreePath?.isNotEmpty == true) return thread.worktreePath!;
   if (thread.branch?.isNotEmpty == true) return thread.branch!;
@@ -577,6 +606,50 @@ class _ThreadOptionsMenu extends StatelessWidget {
                     }
                   },
             child: Text(l.linkMergeRequest),
+          ),
+        if (thread.shareId != null)
+          MenuItemButton(
+            leadingIcon: Icon(Icons.link,
+                size: 18, color: theme.colorScheme.primary),
+            onPressed: isDeleting
+                ? null
+                : () => _shareAndCopy(context, thread),
+            child: Text(l.copyShareLink),
+          )
+        else
+          MenuItemButton(
+            leadingIcon: Icon(Icons.share_outlined,
+                size: 18, color: theme.colorScheme.primary),
+            onPressed: isDeleting
+                ? null
+                : () => _shareAndCopy(context, thread),
+            child: Text(l.share),
+          ),
+        if (thread.shareId != null)
+          MenuItemButton(
+            leadingIcon: Icon(Icons.link_off,
+                size: 18, color: theme.colorScheme.onSurface),
+            onPressed: isDeleting
+                ? null
+                : () async {
+                    await state.unshareThread(thread.id);
+                    if (!context.mounted) return;
+                    if (state.globalError.isNotEmpty) {
+                      showAppMessage(
+                        context,
+                        state.globalError,
+                        kind: MessageKind.error,
+                      );
+                    } else {
+                      showAppMessage(
+                        context,
+                        l.shareStopped,
+                        kind: MessageKind.success,
+                        duration: const Duration(seconds: 1),
+                      );
+                    }
+                  },
+            child: Text(l.stopSharing),
           ),
         MenuItemButton(
           leadingIcon: Icon(Icons.delete_outline,

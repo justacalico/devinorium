@@ -814,6 +814,7 @@ mod tests {
             context_cleared_seq: 0,
             last_message_role: None,
             unread: false,
+            share_id: None,
         }
     }
 

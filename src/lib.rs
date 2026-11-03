@@ -209,6 +209,7 @@ pub fn build_app(state: AppState) -> Router {
     let public = api::auth::router()
         .merge(api::server::router())
         .merge(api::machine_control::router())
+        .merge(api::shared::router())
         .route_layer(RequestBodyLimitLayer::new(max_body));
 
     // Protected routes (require auth + role=user).
