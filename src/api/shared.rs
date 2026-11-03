@@ -302,8 +302,8 @@ fn page_shell(title: &str, heading: &str, body: &str) -> String {
 
 fn render_share_page(share: &ThreadShareRow, messages: &[SharedMessage]) -> String {
     let agent_label = crate::providers::provider_name(&share.provider_id)
-        .unwrap_or("Assistant")
-        .to_string();
+        .map(escape_html)
+        .unwrap_or_else(|| "Assistant".to_string());
 
     let mut body = String::new();
     body.push_str("<p class=\"meta\">Shared conversation &middot; ");

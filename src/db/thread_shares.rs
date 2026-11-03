@@ -84,18 +84,6 @@ impl super::Db {
             .map_err(Into::into)
     }
 
-    /// Fetch the share belonging to a thread, if any.
-    pub async fn get_share_for_thread(
-        &self,
-        thread_id: &str,
-    ) -> anyhow::Result<Option<ThreadShareRow>> {
-        sqlx::query_as::<_, ThreadShareRow>("SELECT * FROM thread_shares WHERE thread_id = ?")
-            .bind(thread_id)
-            .fetch_optional(self.pool())
-            .await
-            .map_err(Into::into)
-    }
-
     /// Just the public id of a thread's share — no snapshot blob.
     pub async fn share_id_for_thread(&self, thread_id: &str) -> anyhow::Result<Option<String>> {
         sqlx::query_scalar("SELECT id FROM thread_shares WHERE thread_id = ?")
@@ -184,7 +172,7 @@ mod tests {
         db.upsert_thread_share("sh-2", &thread_id, user_id, "title2", "codex", "[1]")
             .await
             .unwrap();
-        let row = db.get_share_for_thread(&thread_id).await.unwrap().unwrap();
+        let row = db.get_thread_share("sh-1").await.unwrap().unwrap();
         assert_eq!(row.id, "sh-1", "share id must stay stable across re-shares");
         assert_eq!(row.title, "title2");
         assert_eq!(row.provider_id, "codex");
