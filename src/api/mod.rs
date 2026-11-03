@@ -19,6 +19,7 @@ pub mod push;
 pub(crate) mod scope;
 pub mod server;
 pub mod settings;
+pub mod shared;
 pub mod tailscale;
 pub mod terminal;
 pub mod thread_groups;

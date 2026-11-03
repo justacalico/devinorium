@@ -26,6 +26,7 @@ pub mod push;
 pub mod server_settings;
 pub mod sessions;
 pub mod thread_groups;
+pub mod thread_shares;
 pub mod threads;
 pub mod usage;
 pub mod users;
@@ -321,6 +322,10 @@ pub struct ThreadRow {
     /// populated by the same subqueries as `last_message_role`.
     #[sqlx(default)]
     pub unread: bool,
+    /// Public share id when the thread is published at `/shared/<id>`.
+    /// Not a real column — populated by a subquery on the list/get queries.
+    #[sqlx(default)]
+    pub share_id: Option<String>,
 }
 
 /// A row from the `projects` table.
