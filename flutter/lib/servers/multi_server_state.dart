@@ -156,7 +156,7 @@ class MultiServerState extends ChangeNotifier {
       token: token,
       username: username,
       createdAt: existing?.createdAt ?? DateTime.now().toUtc(),
-      isPrimary: existing?.isPrimary ?? _activeServerId == null,
+      isPrimary: _activeServerId == null || _activeServerId == localProfileId,
       isLocal: true,
     );
     final setActive =
