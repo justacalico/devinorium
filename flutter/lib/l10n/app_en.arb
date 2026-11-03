@@ -835,6 +835,7 @@
   "share": "Share",
   "copyShareLink": "Copy share link",
   "stopSharing": "Stop sharing",
+  "shareStopped": "Sharing stopped",
   "shareLinkCopied": "Share link copied to clipboard",
   "mergeRequestUrlHint": "GitLab merge request URL",
   "invalidMergeRequestUrl": "Enter a valid GitLab merge request URL",

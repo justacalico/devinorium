@@ -260,7 +260,8 @@ void main() {
 
     await tester.tap(find.text('Copy share link'));
     await tester.pumpAndSettle();
-    expect(api.shareCalls, ['t1']);
+    expect(api.shareCalls, isEmpty,
+        reason: 'copying an existing share must not re-publish');
     expect(clipboardText, 'https://srv.test/shared/sh-abc');
 
     await _tapMoreVert(tester);

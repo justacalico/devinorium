@@ -2420,6 +2420,12 @@ abstract class AppLocalizations {
   /// **'Stop sharing'**
   String get stopSharing;
 
+  /// No description provided for @shareStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Sharing stopped'**
+  String get shareStopped;
+
   /// No description provided for @shareLinkCopied.
   ///
   /// In en, this message translates to:

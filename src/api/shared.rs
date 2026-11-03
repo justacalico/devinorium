@@ -38,8 +38,14 @@ async fn share_page(State(state): State<AppState>, Path(id): Path<String>) -> Re
     let messages: Vec<SharedMessage> = serde_json::from_str(&share.snapshot).unwrap_or_default();
 
     let mut resp = Html(render_share_page(&share, &messages)).into_response();
-    resp.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    let headers = resp.headers_mut();
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    // Tighter than the app-wide CSP: the page carries no scripts, images or
+    // fonts, so a defense-in-depth policy pins it to inline styles only.
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'"),
+    );
     resp
 }
 
@@ -65,15 +71,16 @@ fn escape_html(s: &str) -> String {
 fn sanitize_link_url(url: &str) -> CowStr<'static> {
     let trimmed = url.trim();
     let lower = trimmed.to_ascii_lowercase();
-    let safe = lower.starts_with("http://")
+    let safe = (lower.starts_with("http://")
         || lower.starts_with("https://")
         || lower.starts_with("mailto:")
-        || lower.starts_with('/')
         || lower.starts_with('#')
+        || (lower.starts_with('/') && !lower.starts_with("//") && !lower.starts_with("/\\"))
         || match lower.find(':') {
             Some(colon) => lower[..colon].contains('/'),
             None => true, // relative path with no scheme
-        };
+        })
+        && !lower.starts_with('\\');
     if safe {
         CowStr::from(trimmed.to_string())
     } else {
@@ -186,6 +193,7 @@ fn render_message(msg: &SharedMessage, agent_label: &str) -> String {
     let (css, label) = match msg.role.as_str() {
         "user" => ("user", "You"),
         "error" => ("error", "Error"),
+        "system" => ("system", "System"),
         _ => ("assistant", agent_label),
     };
     let mut out =
@@ -272,6 +280,9 @@ fn render_message(msg: &SharedMessage, agent_label: &str) -> String {
         }
     }
 
+    if msg.truncated {
+        out.push_str("<p class=\"truncated\">Message truncated.</p>");
+    }
     out.push_str("</section>");
     out
 }
@@ -356,6 +367,8 @@ details.tool{border:1px solid #2a2b2e;border-radius:8px;padding:8px 12px}\
 .tool-command,.tool-output,.error-body{white-space:pre-wrap;background:#131314;border:1px solid #2a2b2e;border-radius:8px;padding:10px;font-size:.85rem;overflow-x:auto;margin:8px 0 0;font-family:ui-monospace,'Cascadia Code','JetBrains Mono',monospace}\
 .error-body{color:#f28b82}\
 .attachments{color:#9aa0a6;font-size:.8rem;margin:0 0 8px}\
+.truncated{color:#9aa0a6;font-size:.8rem;font-style:italic;margin:8px 0 0}\
+.msg.system .role{color:#9aa0a6}\
 .empty{color:#9aa0a6}\
 footer{margin-top:40px;color:#6a7076;font-size:.75rem;text-align:center}\
 ";
@@ -372,6 +385,7 @@ mod tests {
             parts: vec![],
             attachments: serde_json::json!([]),
             model: String::new(),
+            truncated: false,
             created_at: "2024-01-01T12:34:56.000Z".into(),
         }
     }

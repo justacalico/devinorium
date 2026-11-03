@@ -1289,6 +1289,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get stopSharing => '停止分享';
 
   @override
+  String get shareStopped => '已停止分享';
+
+  @override
   String get shareLinkCopied => '分享链接已复制到剪贴板';
 
   @override

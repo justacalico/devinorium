@@ -806,6 +806,7 @@
   "share": "分享",
   "copyShareLink": "复制分享链接",
   "stopSharing": "停止分享",
+  "shareStopped": "已停止分享",
   "shareLinkCopied": "分享链接已复制到剪贴板",
   "mergeRequestUrlHint": "GitLab 合并请求 URL",
   "invalidMergeRequestUrl": "请输入有效的 GitLab 合并请求 URL",

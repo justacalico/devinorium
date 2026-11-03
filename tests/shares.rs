@@ -307,6 +307,47 @@ async fn share_id_shows_up_in_thread_list() {
 }
 
 #[tokio::test]
+async fn share_id_shows_up_in_project_thread_list() {
+    let (app, database) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid).await;
+    add_message(&database, &tid, "user", "hi").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/share"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let share_id = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await)
+        .unwrap()["share_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/threads"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    assert!(
+        body.contains(&share_id),
+        "project thread list should carry share_id: {body}"
+    );
+}
+
+#[tokio::test]
 async fn reshare_keeps_link_and_refreshes_snapshot() {
     let (app, database) = make_app().await;
     let cookie = login(&app).await;

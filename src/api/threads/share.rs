@@ -32,14 +32,23 @@ fn snapshot_messages(rows: Vec<crate::db::MessageRow>) -> Vec<SharedMessage> {
                 parts: out.parts,
                 attachments: out.attachments,
                 model: out.model,
+                truncated: out.truncated,
                 created_at: out.created_at,
             }
         })
         .collect()
 }
 
-async fn owned_thread(state: &AppState, id: &str, user_id: i64) -> Option<ThreadRow> {
-    state.db.get_thread(id, user_id).await.ok().flatten()
+async fn owned_thread(
+    state: &AppState,
+    id: &str,
+    user_id: i64,
+) -> Result<Option<ThreadRow>, Box<Response>> {
+    state
+        .db
+        .get_thread(id, user_id)
+        .await
+        .map_err(|e| Box::new(map_err_internal(e).into_response()))
 }
 
 pub(super) async fn share(
@@ -47,12 +56,16 @@ pub(super) async fn share(
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
 ) -> Response {
-    let Some(thread) = owned_thread(&state, &id, user.id).await else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(crate::api::ApiError::new("not found")),
-        )
-            .into_response();
+    let thread = match owned_thread(&state, &id, user.id).await {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response();
+        }
+        Err(resp) => return *resp,
     };
 
     let rows = match state.db.list_messages(&id).await {
@@ -66,10 +79,8 @@ pub(super) async fn share(
 
     // Reuse the live share's id on a re-share; only mint a new one for a
     // first publish so existing links keep working.
-    let share_id = match state.db.get_share_for_thread(&id).await {
-        Ok(existing) => existing
-            .map(|s| s.id)
-            .unwrap_or_else(|| format!("sh-{}", Uuid::new_v4().simple())),
+    let share_id = match state.db.share_id_for_thread(&id).await {
+        Ok(existing) => existing.unwrap_or_else(|| format!("sh-{}", Uuid::new_v4().simple())),
         Err(e) => return map_err_internal(e).into_response(),
     };
 
@@ -104,12 +115,16 @@ pub(super) async fn unshare(
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
 ) -> Response {
-    if owned_thread(&state, &id, user.id).await.is_none() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(crate::api::ApiError::new("not found")),
-        )
-            .into_response();
+    match owned_thread(&state, &id, user.id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response();
+        }
+        Err(resp) => return *resp,
     }
 
     if let Err(e) = state.db.delete_thread_share(&id, user.id).await {

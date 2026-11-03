@@ -37,6 +37,10 @@ pub struct SharedMessage {
     pub attachments: serde_json::Value,
     #[serde(default)]
     pub model: String,
+    /// True when the stored row was cut down to the per-message budget; the
+    /// shared page renders a notice instead of pretending completeness.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub truncated: bool,
     pub created_at: String,
 }
 
@@ -86,6 +90,15 @@ impl super::Db {
         thread_id: &str,
     ) -> anyhow::Result<Option<ThreadShareRow>> {
         sqlx::query_as::<_, ThreadShareRow>("SELECT * FROM thread_shares WHERE thread_id = ?")
+            .bind(thread_id)
+            .fetch_optional(self.pool())
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Just the public id of a thread's share — no snapshot blob.
+    pub async fn share_id_for_thread(&self, thread_id: &str) -> anyhow::Result<Option<String>> {
+        sqlx::query_scalar("SELECT id FROM thread_shares WHERE thread_id = ?")
             .bind(thread_id)
             .fetch_optional(self.pool())
             .await

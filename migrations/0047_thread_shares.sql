@@ -14,5 +14,3 @@ CREATE TABLE IF NOT EXISTS thread_shares (
     snapshot    TEXT NOT NULL,
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
-
-CREATE INDEX IF NOT EXISTS idx_thread_shares_thread ON thread_shares(thread_id);

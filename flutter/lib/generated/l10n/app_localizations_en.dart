@@ -1352,6 +1352,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get stopSharing => 'Stop sharing';
 
   @override
+  String get shareStopped => 'Sharing stopped';
+
+  @override
   String get shareLinkCopied => 'Share link copied to clipboard';
 
   @override

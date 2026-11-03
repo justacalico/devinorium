@@ -446,7 +446,12 @@ class _ThreadWorktreeLabel extends StatelessWidget {
 
 Future<void> _shareAndCopy(BuildContext context, Thread thread) async {
   final state = context.read<AppState>();
-  final url = await state.shareThread(thread.id);
+  final existing = thread.shareId;
+  // An existing share copies its live URL only; re-publishing newer
+  // messages requires an explicit Stop sharing + Share round trip.
+  final url = existing != null
+      ? await state.api.shareUrl(existing)
+      : await state.shareThread(thread.id);
   if (!context.mounted) return;
   if (url == null) {
     if (state.globalError.isNotEmpty) {
@@ -634,6 +639,13 @@ class _ThreadOptionsMenu extends StatelessWidget {
                         context,
                         state.globalError,
                         kind: MessageKind.error,
+                      );
+                    } else {
+                      showAppMessage(
+                        context,
+                        l.shareStopped,
+                        kind: MessageKind.success,
+                        duration: const Duration(seconds: 1),
                       );
                     }
                   },
