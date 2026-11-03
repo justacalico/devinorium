@@ -24,6 +24,8 @@ class _ChatModel {
   final String? startedAt;
   final RateLimitWait? rateLimit;
   final bool hasServer;
+  final ConnectionStatus connectionStatus;
+  final String? serverName;
 
   const _ChatModel({
     required this.activeThreadId,
@@ -38,6 +40,8 @@ class _ChatModel {
     required this.startedAt,
     required this.rateLimit,
     required this.hasServer,
+    required this.connectionStatus,
+    required this.serverName,
   });
 
   @override
@@ -55,7 +59,9 @@ class _ChatModel {
         sendPending == other.sendPending &&
         startedAt == other.startedAt &&
         rateLimit == other.rateLimit &&
-        hasServer == other.hasServer;
+        hasServer == other.hasServer &&
+        connectionStatus == other.connectionStatus &&
+        serverName == other.serverName;
   }
 
   @override
@@ -72,6 +78,8 @@ class _ChatModel {
     startedAt,
     rateLimit,
     hasServer,
+    connectionStatus,
+    serverName,
   );
 }
 
@@ -231,6 +239,8 @@ class _ChatViewState extends State<ChatView> {
         startedAt: state.startedAt,
         rateLimit: state.rateLimit,
         hasServer: state.activeServerId != null,
+        connectionStatus: state.connectionStatus,
+        serverName: _serverDisplayName(state),
       ),
       shouldRebuild: (prev, next) => prev != next,
       builder: (context, model, child) {
@@ -270,6 +280,8 @@ class _ChatViewState extends State<ChatView> {
                     sendPending: model.sendPending,
                     controller: _scrollController,
                     hasServer: model.hasServer,
+                    connectionStatus: model.connectionStatus,
+                    serverName: model.serverName,
                   ),
                   // Between send and the first streamed part there is no
                   // streaming row to pin the indicator to; float it at the
@@ -343,6 +355,14 @@ class _ChatViewState extends State<ChatView> {
       },
     );
   }
+}
+
+/// What the empty state names the dead server: the profile label (usually
+/// its host), falling back to the stored base URL.
+String? _serverDisplayName(AppState state) {
+  final profile = state.multiServerState.activeProfile;
+  if (profile == null) return null;
+  return profile.label.isNotEmpty ? profile.label : profile.baseUrl;
 }
 
 class _ThinkingIndicator extends StatelessWidget {

@@ -113,6 +113,7 @@
   },
   "unexpectedResponseShape": "unexpected response shape",
   "expectedAList": "expected a list",
+  "requestTimedOut": "Request timed out",
   "sseOnlySupportedOnWeb": "SSE streaming is only supported on the web",
   "noResponseBody": "no response body",
   "unexpectedStreamChunkType": "Unexpected stream chunk type",
@@ -990,6 +991,19 @@
   "addServerFromSettingsPrompt": "No server configured.\nAdd a server in Settings to get started.",
   "@addServerFromSettingsPrompt": {
     "description": "Empty state in the thread page when no server is connected"
+  },
+  "serverUnreachableTitle": "Can't reach the server",
+  "@serverUnreachableTitle": {
+    "description": "Empty state title when the configured server is unreachable"
+  },
+  "serverUnreachableDetail": "Could not reach {server}. Check that the server is running and the network is up. It keeps retrying in the background.",
+  "@serverUnreachableDetail": {
+    "description": "Empty state body naming the unreachable server",
+    "placeholders": {
+      "server": {
+        "type": "String"
+      }
+    }
   },
   "switchServerLabel": "Switch",
   "@switchServerLabel": {

@@ -284,6 +284,12 @@ abstract class AppLocalizations {
   /// **'expected a list'**
   String get expectedAList;
 
+  /// No description provided for @requestTimedOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Request timed out'**
+  String get requestTimedOut;
+
   /// No description provided for @sseOnlySupportedOnWeb.
   ///
   /// In en, this message translates to:
@@ -2959,6 +2965,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No server configured.\nAdd a server in Settings to get started.'**
   String get addServerFromSettingsPrompt;
+
+  /// Empty state title when the configured server is unreachable
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t reach the server'**
+  String get serverUnreachableTitle;
+
+  /// Empty state body naming the unreachable server
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach {server}. Check that the server is running and the network is up. It keeps retrying in the background.'**
+  String serverUnreachableDetail(String server);
 
   /// Button text to activate a different server profile
   ///

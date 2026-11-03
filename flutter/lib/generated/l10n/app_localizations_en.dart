@@ -113,6 +113,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get expectedAList => 'expected a list';
 
   @override
+  String get requestTimedOut => 'Request timed out';
+
+  @override
   String get sseOnlySupportedOnWeb =>
       'SSE streaming is only supported on the web';
 
@@ -1646,6 +1649,14 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get addServerFromSettingsPrompt =>
       'No server configured.\nAdd a server in Settings to get started.';
+
+  @override
+  String get serverUnreachableTitle => 'Can\'t reach the server';
+
+  @override
+  String serverUnreachableDetail(String server) {
+    return 'Could not reach $server. Check that the server is running and the network is up. It keeps retrying in the background.';
+  }
 
   @override
   String get switchServerLabel => 'Switch';

@@ -113,6 +113,7 @@
   },
   "unexpectedResponseShape": "意外的响应格式",
   "expectedAList": "应为列表",
+  "requestTimedOut": "请求超时",
   "sseOnlySupportedOnWeb": "SSE 流式仅支持网页端",
   "noResponseBody": "无响应体",
   "unexpectedStreamChunkType": "意外的流块类型",
@@ -942,6 +943,19 @@
   "addServerFromSettingsPrompt": "未配置服务器。\n在设置中添加服务器以开始使用。",
   "@addServerFromSettingsPrompt": {
     "description": "Empty state in the thread page when no server is connected"
+  },
+  "serverUnreachableTitle": "无法连接到服务器",
+  "@serverUnreachableTitle": {
+    "description": "Empty state title when the configured server is unreachable"
+  },
+  "serverUnreachableDetail": "无法连接到 {server}。请确认服务器正在运行且网络连接正常，应用会在后台继续重试。",
+  "@serverUnreachableDetail": {
+    "description": "Empty state body naming the unreachable server",
+    "placeholders": {
+      "server": {
+        "type": "String"
+      }
+    }
   },
   "switchServerLabel": "切换",
   "@switchServerLabel": {
