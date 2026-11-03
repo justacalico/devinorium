@@ -326,7 +326,13 @@ mixin AuthStore on AppStateBase {
           baseUrl: endpoint.baseUrl,
           token: endpoint.token,
         );
-        if (previous != null &&
+        // Thread stores and terminals belong to the active server, so the
+        // teardown only applies while the local profile is the one in use —
+        // a respawn behind a remote profile must not wipe its state. The
+        // check sits after the upsert await so a switch to a remote profile
+        // during the write is honored.
+        if (multiServerState.activeProfile?.isLocal == true &&
+            previous != null &&
             (previous.baseUrl != endpoint.baseUrl ||
                 previous.token != endpoint.token)) {
           // The bundled server respawned on a new port; open thread stores
@@ -363,14 +369,18 @@ mixin AuthStore on AppStateBase {
     }
   }
 
-  /// Restart the bundled server when it dies while its profile is active, so
-  /// a crash does not leave the app stuck on a dead connection.
+  /// Re-ensure the bundled server whenever it dies so it stays warm for a
+  /// switch back. If it crash-loops, the spawn cooldown wins and recovery is
+  /// left to the next switch back to the local profile. The connection probe
+  /// only runs while the local profile is active; a remote server's own
+  /// health loop owns its recovery.
   void _onLocalServerExit(int exitCode) {
     debugLogFailure('localServer.exit', 'exit code $exitCode');
-    if (multiServerState.activeProfile?.isLocal != true) return;
     unawaited(() async {
       await _ensureLocalServer();
-      await checkConnection();
+      if (multiServerState.activeProfile?.isLocal == true) {
+        await checkConnection();
+      }
     }());
   }
 

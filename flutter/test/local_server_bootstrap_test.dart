@@ -18,6 +18,14 @@ class _FakeApi extends ApiService {
         ),
       );
 
+  int healthChecks = 0;
+
+  @override
+  Future<bool> checkHealth() {
+    healthChecks++;
+    return super.checkHealth();
+  }
+
   @override
   Future<User> me() async => User(
     id: 1,
@@ -301,6 +309,9 @@ void main() {
         await state.bootstrap();
         expect(state.activeServerId, MultiServerState.localProfileId);
 
+        await state.terminalStore.addSession(local: true);
+        expect(state.terminalStore.tabs, hasLength(1));
+
         // Second ensure returns the rotated endpoint.
         manager.endpointToReturn = const LocalServerEndpoint(
           baseUrl: 'http://127.0.0.1:45678',
@@ -318,11 +329,14 @@ void main() {
               .baseUrl,
           'http://127.0.0.1:45678',
         );
+        // The rotation tears down state bound to the dead endpoint.
+        expect(state.terminalStore.tabs, isEmpty);
       },
     );
 
-    test('an exit while a remote server is active does not restart', () async {
+    test('an exit while a remote server is active still restarts', () async {
       final multi = MultiServerState();
+      final remoteApi = _FakeApi();
       multi.addTestConnection(
         ServerProfile(
           id: 'remote',
@@ -333,7 +347,7 @@ void main() {
           createdAt: DateTime(2024, 1, 1).toUtc(),
           isPrimary: true,
         ),
-        _FakeApi(),
+        remoteApi,
       );
       final manager = _FakeLocalManager(
         supported: true,
@@ -349,10 +363,72 @@ void main() {
       addTearDown(state.dispose);
       await state.bootstrap();
       expect(state.activeServerId, 'remote');
+      final callsAfterBoot = manager.ensureCalls;
+      final probesAfterBoot = remoteApi.healthChecks;
 
+      manager.endpointToReturn = const LocalServerEndpoint(
+        baseUrl: 'http://127.0.0.1:45678',
+        token: 'tok2',
+      );
       manager.onExit?.call(1);
       await Future<void>.delayed(const Duration(milliseconds: 50));
-      expect(manager.ensureCalls, 1);
+
+      expect(manager.ensureCalls, greaterThan(callsAfterBoot));
+      expect(state.activeServerId, 'remote');
+      expect(
+        state.multiServerState
+            .profileById(MultiServerState.localProfileId)!
+            .baseUrl,
+        'http://127.0.0.1:45678',
+      );
+      // The respawn stays in the background; the remote connection is not
+      // probed or reset.
+      expect(remoteApi.healthChecks, probesAfterBoot);
     });
+
+    test(
+      'a respawn while a remote server is active keeps open terminals',
+      () async {
+        final multi = MultiServerState();
+        multi.addTestConnection(
+          ServerProfile(
+            id: 'remote',
+            label: 'remote',
+            baseUrl: 'http://remote:7878',
+            token: 't',
+            username: 'owner',
+            createdAt: DateTime(2024, 1, 1).toUtc(),
+            isPrimary: true,
+          ),
+          _FakeApi(),
+        );
+        final manager = _FakeLocalManager(
+          supported: true,
+          endpointToReturn: const LocalServerEndpoint(
+            baseUrl: 'http://127.0.0.1:43210',
+            token: 'tok',
+          ),
+        );
+        final state = AppState.test(
+          multiServerState: multi,
+          localServerManager: manager,
+        );
+        addTearDown(state.dispose);
+        await state.bootstrap();
+        expect(state.activeServerId, 'remote');
+
+        await state.terminalStore.addSession(local: true);
+        expect(state.terminalStore.tabs, hasLength(1));
+
+        manager.endpointToReturn = const LocalServerEndpoint(
+          baseUrl: 'http://127.0.0.1:45678',
+          token: 'tok2',
+        );
+        manager.onExit?.call(1);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(state.terminalStore.tabs, hasLength(1));
+      },
+    );
   });
 }
