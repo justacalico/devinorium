@@ -2402,6 +2402,30 @@ abstract class AppLocalizations {
   /// **'Unlink merge request'**
   String get unlinkMergeRequest;
 
+  /// No description provided for @share.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get share;
+
+  /// No description provided for @copyShareLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy share link'**
+  String get copyShareLink;
+
+  /// No description provided for @stopSharing.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop sharing'**
+  String get stopSharing;
+
+  /// No description provided for @shareLinkCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Share link copied to clipboard'**
+  String get shareLinkCopied;
+
   /// No description provided for @mergeRequestUrlHint.
   ///
   /// In en, this message translates to:

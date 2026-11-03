@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
+import 'package:devinorium_frontend/api/native_api_client.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -1484,6 +1485,69 @@ void main() {
         service.tailscaleStatus(),
         throwsA(isA<ApiException>()),
       );
+    });
+  });
+
+  group('Thread shares', () {
+    test('shareThread posts and parses the updated thread', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('POST', '/api/threads/t1/share'));
+        return _json(200, {
+          'id': 't1',
+          'title': 'work',
+          'project_id': 1,
+          'provider_id': 'devin-cli',
+          'model': '',
+          'permission_mode': 'normal',
+          'env_mode': 'local',
+          'pinned': false,
+          'created_at': '',
+          'updated_at': '',
+          'share_id': 'sh-abc123',
+        });
+      });
+      final service = _serviceFor(mock);
+      final thread = await service.shareThread('t1');
+      expect(thread.id, 't1');
+      expect(thread.shareId, 'sh-abc123');
+    });
+
+    test('unshareThread deletes and clears share_id', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('DELETE', '/api/threads/t1/share'));
+        return _json(200, {
+          'id': 't1',
+          'title': 'work',
+          'project_id': 1,
+          'provider_id': 'devin-cli',
+          'model': '',
+          'permission_mode': 'normal',
+          'env_mode': 'local',
+          'pinned': false,
+          'created_at': '',
+          'updated_at': '',
+          'share_id': null,
+        });
+      });
+      final service = _serviceFor(mock);
+      final thread = await service.unshareThread('t1');
+      expect(thread.shareId, isNull);
+    });
+
+    test('shareUrl joins the server base URL', () async {
+      final client = NativeApiClient();
+      await client.setServerUrl('https://srv.test/base/');
+      final service = ApiService(client: client);
+      expect(
+        await service.shareUrl('sh-1'),
+        'https://srv.test/base/shared/sh-1',
+      );
+    });
+
+    test('shareUrl falls back to the path without a server URL', () async {
+      final mock = MockClient((req) async => _json(200, {}));
+      final service = _serviceFor(mock);
+      expect(await service.shareUrl('sh-1'), '/shared/sh-1');
     });
   });
 }

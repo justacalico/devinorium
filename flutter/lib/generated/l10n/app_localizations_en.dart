@@ -1343,6 +1343,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get unlinkMergeRequest => 'Unlink merge request';
 
   @override
+  String get share => 'Share';
+
+  @override
+  String get copyShareLink => 'Copy share link';
+
+  @override
+  String get stopSharing => 'Stop sharing';
+
+  @override
+  String get shareLinkCopied => 'Share link copied to clipboard';
+
+  @override
   String get mergeRequestUrlHint => 'GitLab merge request URL';
 
   @override

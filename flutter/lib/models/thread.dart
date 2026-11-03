@@ -161,6 +161,10 @@ class Thread {
   /// keep the previous always-shown behavior.
   final bool unread;
 
+  /// Public share id while the thread is published at `/shared/<id>` on the
+  /// server; null when the transcript is private.
+  final String? shareId;
+
   Thread({
     required this.id,
     required this.title,
@@ -182,6 +186,7 @@ class Thread {
     this.maxOutputTokens,
     this.lastMessageRole,
     this.unread = true,
+    this.shareId,
   });
 
   factory Thread.fromJson(Map<String, dynamic> j) => Thread(
@@ -205,6 +210,7 @@ class Thread {
     maxOutputTokens: (j['max_output_tokens'] as num?)?.toInt(),
     lastMessageRole: j['last_message_role'] as String?,
     unread: j['unread'] as bool? ?? true,
+    shareId: j['share_id'] as String?,
   );
 
   /// A short display name for the thread's active worktree.
@@ -234,6 +240,7 @@ class Thread {
     Object? branch = const _Unset(),
     Object? worktreePath = const _Unset(),
     Object? maxOutputTokens = const _Unset(),
+    Object? shareId = const _Unset(),
   }) => Thread(
     id: id,
     title: title ?? this.title,
@@ -261,6 +268,7 @@ class Thread {
         : (maxOutputTokens as int?),
     lastMessageRole: lastMessageRole,
     unread: unread ?? this.unread,
+    shareId: shareId is _Unset ? this.shareId : (shareId as String?),
   );
 
   @override
@@ -286,7 +294,8 @@ class Thread {
         linkedMr == other.linkedMr &&
         maxOutputTokens == other.maxOutputTokens &&
         lastMessageRole == other.lastMessageRole &&
-        unread == other.unread;
+        unread == other.unread &&
+        shareId == other.shareId;
   }
 
   @override
@@ -311,6 +320,7 @@ class Thread {
     maxOutputTokens,
     lastMessageRole,
     unread,
+    shareId,
   ]);
 }
 

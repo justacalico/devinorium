@@ -1280,6 +1280,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get unlinkMergeRequest => '取消关联合并请求';
 
   @override
+  String get share => '分享';
+
+  @override
+  String get copyShareLink => '复制分享链接';
+
+  @override
+  String get stopSharing => '停止分享';
+
+  @override
+  String get shareLinkCopied => '分享链接已复制到剪贴板';
+
+  @override
   String get mergeRequestUrlHint => 'GitLab 合并请求 URL';
 
   @override

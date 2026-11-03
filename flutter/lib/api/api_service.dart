@@ -1,5 +1,6 @@
 import 'dart:convert';
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import '../models/models.dart';
 import 'api_client.dart';
@@ -597,6 +598,36 @@ class ApiService {
   /// drops the done badge until new output arrives.
   Future<void> markThreadViewed(String id) async {
     await _client.post('/api/threads/$id/viewed');
+  }
+
+  /// Publish the thread transcript at a public `/shared/<id>` page, or
+  /// refresh the snapshot when a share already exists. The share id (and
+  /// the link) stays stable across refreshes.
+  Future<Thread> shareThread(String id) async {
+    final j = await _client.post('/api/threads/$id/share');
+    return Thread.fromJson(j);
+  }
+
+  /// Revoke the thread's public share. The `/shared/<id>` page 404s after.
+  Future<Thread> unshareThread(String id) async {
+    final j = await _client.delete('/api/threads/$id/share');
+    return Thread.fromJson(j);
+  }
+
+  /// Absolute URL of a share page. Web resolves the path against the page
+  /// origin; native resolves it against the connected server's base URL.
+  Future<String> shareUrl(String shareId) async {
+    const path = '/shared/';
+    final base = await _client.serverUrl;
+    if (base != null && base.isNotEmpty) {
+      final trimmed =
+          base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+      return '$trimmed$path$shareId';
+    }
+    if (kIsWeb) {
+      return Uri.base.resolve('$path$shareId').toString();
+    }
+    return '$path$shareId';
   }
 
   Future<void> updateThreadSettings(
