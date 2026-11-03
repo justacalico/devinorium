@@ -294,9 +294,8 @@ fn page_shell(title: &str, heading: &str, body: &str) -> String {
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
 <meta name=\"referrer\" content=\"no-referrer\">\
 <title>{title}</title>\
-<style>{}</style>\
+<style>{PAGE_CSS}</style>\
 </head><body><main><h1 class=\"brand\">{heading}</h1>{body}</main></body></html>",
-        PAGE_CSS,
     )
 }
 
