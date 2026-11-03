@@ -69,12 +69,14 @@ mixin HealthCheckStore on AppStateBase {
     var authFailed = false;
     if (ok && multiServerState.activeProfile?.isLocal == true) {
       // /healthz is public, so also prove the bundled token still
-      // authenticates; otherwise a stale token looks "connected".
+      // authenticates; otherwise a stale token looks "connected". Only a
+      // real rejection counts as an auth failure — a timeout or 5xx marks
+      // the check failed but must not kill a live server.
       try {
         await api.me();
-      } catch (_) {
+      } catch (e) {
         ok = false;
-        authFailed = true;
+        authFailed = e is ApiException && e.statusCode == 401;
       }
     }
     // A server switch during the check makes the result meaningless for
@@ -129,8 +131,14 @@ mixin HealthCheckStore on AppStateBase {
       // fresh snapshot resyncs anything missed while away.
       _restartRunEvents();
     }
-    // Node online flags come from probing; refresh the list on the tick.
     if (ok) {
+      // The initial load is skipped while the server is down; finish it now
+      // that the probe answers. A profile sitting on the login dialog has
+      // no credential to load with, so it is left alone.
+      if (_user == null && _dialog != DialogKind.webLogin) {
+        unawaited(_loadDeferredUserData());
+      }
+      // Node online flags come from probing; refresh the list on the tick.
       unawaited(refreshFederationNodes());
     }
     if (_connectionStatus == ConnectionStatus.connected) {

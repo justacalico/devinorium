@@ -10,6 +10,8 @@ class _MessagesPanel extends StatelessWidget {
   final bool sendPending;
   final ScrollController controller;
   final bool hasServer;
+  final ConnectionStatus connectionStatus;
+  final String? serverName;
   const _MessagesPanel({
     required this.detail,
     required this.loading,
@@ -20,6 +22,8 @@ class _MessagesPanel extends StatelessWidget {
     required this.sendPending,
     required this.controller,
     required this.hasServer,
+    required this.connectionStatus,
+    required this.serverName,
   });
 
   @override
@@ -60,6 +64,46 @@ class _MessagesPanel extends StatelessWidget {
                 FilledButton.tonal(
                   onPressed: () => state.setPage(MainPage.settings),
                   child: Text(l10n(context).settings),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+      if (connectionStatus == ConnectionStatus.disconnected) {
+        final state = context.read<AppState>();
+        final name = serverName;
+        return Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(48),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.cloud_off_outlined,
+                  size: 48,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  l10n(context).serverUnreachableTitle,
+                  style: theme.textTheme.titleMedium,
+                  textAlign: TextAlign.center,
+                ),
+                if (name != null && name.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    l10n(context).serverUnreachableDetail(name),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                FilledButton.tonal(
+                  onPressed: state.checkConnection,
+                  child: Text(l10n(context).retry),
                 ),
               ],
             ),

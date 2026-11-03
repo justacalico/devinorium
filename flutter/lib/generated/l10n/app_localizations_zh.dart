@@ -112,6 +112,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get expectedAList => '应为列表';
 
   @override
+  String get requestTimedOut => '请求超时';
+
+  @override
   String get sseOnlySupportedOnWeb => 'SSE 流式仅支持网页端';
 
   @override
@@ -1571,6 +1574,14 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get addServerFromSettingsPrompt => '未配置服务器。\n在设置中添加服务器以开始使用。';
+
+  @override
+  String get serverUnreachableTitle => '无法连接到服务器';
+
+  @override
+  String serverUnreachableDetail(String server) {
+    return '无法连接到 $server。请确认服务器正在运行且网络连接正常，应用会在后台继续重试。';
+  }
 
   @override
   String get switchServerLabel => '切换';

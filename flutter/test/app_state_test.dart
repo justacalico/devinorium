@@ -210,6 +210,7 @@ void main() {
       final state = AppState(
         api: ApiService(
           client: _clientFor([
+            _json(200, {}),
             _json(200, {
               'id': 1,
               'username': 'owner',
@@ -268,6 +269,7 @@ void main() {
       final state = AppState(
         api: ApiService(
           client: _clientFor([
+            _json(200, {}),
             _json(200, {
               'id': 1,
               'username': 'owner',
@@ -323,6 +325,7 @@ void main() {
         final state = AppState(
           api: ApiService(
             client: _clientFor([
+              _json(200, {}),
               _json(200, {
                 'id': 1,
                 'username': 'owner',
@@ -371,6 +374,7 @@ void main() {
         final state = AppState(
           api: ApiService(
             client: _clientFor([
+              _json(200, {}),
               _json(200, {
                 'id': 1,
                 'username': 'owner',
@@ -422,6 +426,7 @@ void main() {
         final state = AppState(
           api: ApiService(
             client: _clientFor([
+              _json(200, {}),
               _json(200, {
                 'id': 1,
                 'username': 'owner',
@@ -480,6 +485,7 @@ void main() {
         final state = AppState(
           api: ApiService(
             client: _clientFor([
+              _json(200, {}),
               _json(200, {
                 'id': 1,
                 'username': 'owner',
@@ -540,6 +546,7 @@ void main() {
         final state = AppState(
           api: ApiService(
             client: _clientFor([
+              _json(200, {}),
               _json(200, {
                 'id': 1,
                 'username': 'owner',
@@ -581,7 +588,10 @@ void main() {
     test('bootstrap falls back to app on error', () async {
       final state = AppState(
         api: ApiService(
-          client: _clientFor([http.Response('unauthorized', 401)]),
+          client: _clientFor([
+            _json(200, {}),
+            http.Response('unauthorized', 401),
+          ]),
         ),
       );
       await state.bootstrap();
@@ -591,7 +601,9 @@ void main() {
     test('bootstrap keeps the token on a real 403', () async {
       SharedPreferences.setMockInitialValues({});
       final state = AppState(
-        api: ApiService(client: _clientFor([http.Response('forbidden', 403)])),
+        api: ApiService(
+          client: _clientFor([_json(200, {}), http.Response('forbidden', 403)]),
+        ),
       );
       await state.bootstrap();
       expect(state.view, AppView.app);
@@ -1006,6 +1018,7 @@ void main() {
         ),
         ApiService(
           client: _clientFor([
+            _json(200, {}),
             _json(404, {'error': 'none'}),
           ]),
         ),
@@ -5400,6 +5413,7 @@ void main() {
       final state = AppState(
         api: ApiService(
           client: _clientFor([
+            _json(200, {}),
             _json(200, {
               'id': 1,
               'username': 'owner',
@@ -5454,6 +5468,7 @@ void main() {
         final state = AppState(
           api: ApiService(
             client: _clientFor([
+              _json(200, {}),
               _json(200, {
                 'id': 1,
                 'username': 'owner',

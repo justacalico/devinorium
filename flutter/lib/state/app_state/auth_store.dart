@@ -5,6 +5,8 @@ mixin AuthStore on AppStateBase {
   bool _switchingServer = false;
   @override
   int _serverSeq = 0;
+  @override
+  Future<void>? _deferredUserLoad;
 
   @override
   User? _user;
@@ -47,7 +49,7 @@ mixin AuthStore on AppStateBase {
         notifyListeners();
         return;
       }
-      await _loadUserAndData();
+      await _loadUserDataWhenReachable();
     } catch (e) {
       if (e is ApiException && _isUnauthenticated(e)) {
         if (multiServerState.activeProfile?.isLocal == true) {
@@ -67,10 +69,67 @@ mixin AuthStore on AppStateBase {
       if (kIsWeb && e is ApiException && _isUnauthenticated(e)) {
         _dialog = DialogKind.webLogin;
       }
-      if (multiServerState.activeProfile?.isLocal == true) {
-        startHealthChecks();
-      }
+      // Keep the health-check loop running for every profile, not just the
+      // bundled one: when the failure was a dead server the loop is what
+      // brings the deferred load back once it answers again.
+      startHealthChecks();
       _view = AppView.app;
+      notifyListeners();
+    }
+  }
+
+  /// Run the initial data load only when the active server answers a
+  /// bounded health probe. A dead server used to leave the UI waiting on a
+  /// socket that takes minutes to give up; instead mark it disconnected and
+  /// let the health-check loop finish the load on recovery.
+  Future<void> _loadUserDataWhenReachable() async {
+    final serverId = multiServerState.activeServerId;
+    final active = multiServerState.activeApi;
+    if (active == null) {
+      _view = AppView.app;
+      notifyListeners();
+      return;
+    }
+    if (!(await active.checkHealth())) {
+      if (_isDisposed || multiServerState.activeServerId != serverId) return;
+      _connectionStatus = ConnectionStatus.disconnected;
+      startHealthChecks();
+      _view = AppView.app;
+      notifyListeners();
+      return;
+    }
+    if (_isDisposed || multiServerState.activeServerId != serverId) return;
+    await _loadUserAndData();
+  }
+
+  /// The initial load was skipped because the server was down; run it now
+  /// that the health check sees it answer again. A cleared token or a login
+  /// dialog means there is nothing to retry against, so the loop stops.
+  @override
+  Future<void> _loadDeferredUserData() {
+    return _deferredUserLoad ??= _runDeferredUserData().whenComplete(
+      () => _deferredUserLoad = null,
+    );
+  }
+
+  Future<void> _runDeferredUserData() async {
+    final serverId = multiServerState.activeServerId;
+    final active = multiServerState.activeApi;
+    if (_isDisposed ||
+        _switchingServer ||
+        active == null ||
+        !(await active.client.isConfigured)) {
+      return;
+    }
+    try {
+      await _loadUserAndData();
+    } catch (e) {
+      if (_isDisposed || multiServerState.activeServerId != serverId) return;
+      if (e is ApiException && _isUnauthenticated(e)) {
+        await _routeToLogin();
+        return;
+      }
+      _globalError = '$e';
       notifyListeners();
     }
   }
@@ -478,14 +537,12 @@ mixin AuthStore on AppStateBase {
       // Refresh the Tailscale card for the new server even if the rest of
       // the user data load fails below.
       unawaited(loadTailscaleStatus());
-      await _loadUserAndData();
+      await _loadUserDataWhenReachable();
     } catch (e) {
       _globalError = '$e';
-      // The bundled server is app-managed — keep retrying it even when the
-      // switch to it failed, instead of sitting permanently disconnected.
-      if (multiServerState.activeProfile?.isLocal == true) {
-        startHealthChecks();
-      }
+      // Keep retrying every server, not just the bundled one: a dead remote
+      // must come back on its own once it answers the probe again.
+      startHealthChecks();
       notifyListeners();
     } finally {
       _switchingServer = false;
@@ -514,7 +571,7 @@ mixin AuthStore on AppStateBase {
           await _ensureLocalServer();
         }
         if (multiServerState.activeApi != null) {
-          await _loadUserAndData();
+          await _loadUserDataWhenReachable();
         } else {
           if (multiServerState.activeProfile?.isLocal == true) {
             startHealthChecks();
@@ -525,9 +582,7 @@ mixin AuthStore on AppStateBase {
       }
     } catch (e) {
       _globalError = '$e';
-      if (multiServerState.activeProfile?.isLocal == true) {
-        startHealthChecks();
-      }
+      startHealthChecks();
       notifyListeners();
     } finally {
       _switchingServer = false;
@@ -689,11 +744,23 @@ mixin AuthStore on AppStateBase {
 
   @override
   Future<void> _loadUserAndData() async {
-    _user = await api.me();
+    final serverId = multiServerState.activeServerId;
+    final seq = _serverSeq;
+    bool stale() =>
+        _isDisposed ||
+        seq != _serverSeq ||
+        multiServerState.activeServerId != serverId;
+    final user = await api.me();
+    // The load can outlive the server switch that spawned it; a stale
+    // completion must not write the old server's user over the new state.
+    if (stale()) return;
+    _user = user;
     await _loadPlanOverlayState();
     await _loadComposerSelections();
     await _loadModelsAndProviders();
+    if (stale()) return;
     await loadProjects();
+    if (stale()) return;
     if (_projects.isNotEmpty) {
       await selectProject(_projects.first.id);
     } else {

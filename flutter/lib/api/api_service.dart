@@ -2,12 +2,20 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../l10n/global_l10n.dart';
 import '../models/models.dart';
 import 'api_client.dart';
 import 'client_factory.dart';
 
 /// High-level API methods returning typed models. Wraps [ApiClient].
 class ApiService {
+  /// Reachability probes like `/healthz` must fail fast: an unreachable
+  /// server would otherwise hold the caller for the OS TCP timeout.
+  static const _probeTimeout = Duration(seconds: 5);
+
+  /// Bound for small requests that gate UI flows (login, session load).
+  static const _requestTimeout = Duration(seconds: 15);
+
   final BaseApiClient _client;
 
   ApiService({BaseApiClient? client}) : _client = client ?? createApiClient();
@@ -20,7 +28,9 @@ class ApiService {
   // ---- Auth ----
 
   Future<User> me() async {
-    final j = await _client.get('/api/auth/me');
+    final j = await _client
+        .get('/api/auth/me')
+        .timeout(_requestTimeout, onTimeout: _requestTimedOut);
     return User.fromJson(j);
   }
 
@@ -36,7 +46,9 @@ class ApiService {
     if (totp != null && totp.trim().isNotEmpty) {
       body['totp'] = totp.trim();
     }
-    final j = await _client.post('/api/auth/login', body);
+    final j = await _client
+        .post('/api/auth/login', body)
+        .timeout(_requestTimeout, onTimeout: _requestTimedOut);
     return LoginResponse.fromJson(j);
   }
 
@@ -620,8 +632,9 @@ class ApiService {
     const path = '/shared/';
     final base = await _client.serverUrl;
     if (base != null && base.isNotEmpty) {
-      final trimmed =
-          base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+      final trimmed = base.endsWith('/')
+          ? base.substring(0, base.length - 1)
+          : base;
       return '$trimmed$path$shareId';
     }
     if (kIsWeb) {
@@ -1151,6 +1164,9 @@ class ApiService {
     );
   }
 
+  static Map<String, dynamic> _requestTimedOut() =>
+      throw ApiException(appL10n.requestTimedOut, 0);
+
   /// Build a path with optional query parameters, encoding values safely.
   static String _buildPath(String path, Map<String, String> params) {
     if (params.isEmpty) return path;
@@ -1166,10 +1182,11 @@ class ApiService {
   }
 
   /// Check if the backend is reachable. Returns true on a successful
-  /// `/healthz` response, false on any error.
+  /// `/healthz` response, false on any error or when the server does not
+  /// answer before [_probeTimeout].
   Future<bool> checkHealth() async {
     try {
-      await _client.get('/healthz');
+      await _client.get('/healthz').timeout(_probeTimeout);
       return true;
     } catch (_) {
       return false;
@@ -1177,10 +1194,10 @@ class ApiService {
   }
 
   /// Fetch the backend version from `/api/server/version`.
-  /// Returns `null` if the request fails.
+  /// Returns `null` if the request fails or times out.
   Future<String?> serverVersion() async {
     try {
-      final j = await _client.get('/api/server/version');
+      final j = await _client.get('/api/server/version').timeout(_probeTimeout);
       return j['version'] as String?;
     } catch (_) {
       return null;
@@ -1208,10 +1225,7 @@ class ApiService {
   /// Clone a remote repository into the clone root on this server or on a
   /// paired node when [nodeId] is set. Returns the path on that machine.
   Future<String> cloneRepo(String url, {String? nodeId, int? groupId}) async {
-    final body = <String, dynamic>{
-      'url': url,
-      'group_id': ?groupId,
-    };
+    final body = <String, dynamic>{'url': url, 'group_id': ?groupId};
     if (nodeId != null && nodeId.isNotEmpty) body['node_id'] = nodeId;
     final j = await _client.post('/api/clones', body);
     return j['path'] as String;

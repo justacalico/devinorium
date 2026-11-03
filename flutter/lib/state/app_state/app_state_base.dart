@@ -333,6 +333,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _ongoingCheck(Future<void>? value);
   String? get _ongoingCheckTarget;
   set _ongoingCheckTarget(String? value);
+  Future<void>? get _deferredUserLoad;
+  set _deferredUserLoad(Future<void>? value);
   bool get _wantsResume;
   set _wantsResume(bool value);
   bool get _isResuming;
@@ -639,6 +641,7 @@ abstract class AppStateBase extends ChangeNotifier {
   bool _checkAuthFailure(Object e);
   Future<void> _routeToLogin();
   Future<void> _loadUserAndData();
+  Future<void> _loadDeferredUserData();
   String? get _activeProjectNodeId;
   Future<void> _loadUserThreadsChunk({bool reset = false});
   Future<void> _loadProjectThreadsChunk(int projectId, {bool reset = false});
@@ -688,6 +691,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> pinProject(int id, bool pinned);
   Future<void> renameThread(String id, String title);
   Future<void> pinThread(String id, bool pinned);
+
   /// Publish or refresh the thread's public share; returns the share URL,
   /// or null when the request failed (`globalError` carries the reason).
   Future<String?> shareThread(String id);
