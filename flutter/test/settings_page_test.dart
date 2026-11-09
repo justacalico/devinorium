@@ -76,7 +76,7 @@ class _FakeApiService extends ApiService {
           gitConnections ??
           const [
             GitConnection(id: 'gitlab', name: 'GitLab', enabled: true),
-            GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
+            GitConnection(id: 'github', name: 'GitHub'),
           ],
       super(
         client: ApiClient.withClient(
@@ -1481,7 +1481,7 @@ void main() {
     expect(find.text('Git'), findsOneWidget);
     expect(find.text('GitLab'), findsOneWidget);
     expect(find.text('GitHub'), findsOneWidget);
-    expect(find.text('Coming soon'), findsNWidgets(2));
+    expect(find.text('GitHub CLI (gh) is not installed'), findsOneWidget);
     expect(find.text('Connect'), findsOneWidget);
   });
 
@@ -1547,7 +1547,7 @@ void main() {
           authed: true,
           account: 'owner',
         ),
-        GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
+        GitConnection(id: 'github', name: 'GitHub'),
       ],
     );
     final state = AppState.test(
@@ -1580,7 +1580,7 @@ void main() {
       final fake = _FakeApiService(
         gitConnections: const [
           GitConnection(id: 'gitlab', name: 'GitLab'),
-          GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
+          GitConnection(id: 'github', name: 'GitHub'),
         ],
       );
       final state = AppState.test(

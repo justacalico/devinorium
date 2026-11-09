@@ -115,7 +115,7 @@ void main() {
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Enter a valid GitLab merge request URL'), findsOneWidget);
+    expect(find.text('Enter a valid GitLab or GitHub merge request URL'), findsOneWidget);
   });
 
   testWidgets('returns the parsed URL for a valid GitLab MR', (tester) async {
