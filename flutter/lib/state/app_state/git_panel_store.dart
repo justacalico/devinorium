@@ -650,7 +650,8 @@ mixin GitPanelStore on AppStateBase {
       if (seq != _gitRemoteSeq || _gitPanelScopeKey != scopeKey) return;
       _gitPanelRemote = remote;
       _gitRemoteLoaded = true;
-      if (remote == null || remote.provider != 'gitlab') {
+      if (remote == null ||
+          (remote.provider != 'gitlab' && remote.provider != 'github')) {
         _gitMergeRequests = [];
         _gitIssues = [];
         return;

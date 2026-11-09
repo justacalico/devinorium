@@ -10,7 +10,7 @@ use serde::Deserialize;
 
 use crate::api::ApiError;
 use crate::auth::session::CurrentUser;
-use crate::git::{GitConnection, MergeRequestAction, RemoteError};
+use crate::git::{GitConnection, GitHost, MergeRequestAction, RemoteError};
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -35,10 +35,29 @@ pub fn router() -> Router<AppState> {
             "/api/git-connections/gitlab/merge-requests/actions",
             post(gitlab_merge_request_action),
         )
+        .route("/api/git-connections/github", post(login_github))
+        .route("/api/git-connections/github", delete(logout_github))
+        .route("/api/git-connections/github/proxy", get(github_proxy))
+        .route(
+            "/api/git-connections/github/pipelines/jobs",
+            get(github_pipeline_jobs),
+        )
+        .route(
+            "/api/git-connections/github/pipelines/jobs/logs",
+            get(github_job_log),
+        )
+        .route(
+            "/api/git-connections/github/pipelines",
+            get(github_pipelines),
+        )
+        .route(
+            "/api/git-connections/github/merge-requests/actions",
+            post(github_pull_request_action),
+        )
         .route_layer(from_fn(owner_only))
 }
 
-/// Git host connections drive the operator's shared `glab` identity, so
+/// Git host connections drive the operator's shared CLI identity, so
 /// every route here is owner-only.
 async fn owner_only(req: Request, next: Next) -> Response {
     match req.extensions().get::<CurrentUser>() {
@@ -47,13 +66,39 @@ async fn owner_only(req: Request, next: Next) -> Response {
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct GitLabLoginRequest {
-    pub hostname: Option<String>,
+fn connection_json(host: GitHost, status: crate::git::GitHostStatus) -> Response {
+    Json(GitConnection {
+        id: host.id(),
+        name: host.display_name(),
+        enabled: true,
+        available: true,
+        authed: true,
+        account: status.account,
+        host: Some(status.host),
+        coming_soon: false,
+    })
+    .into_response()
+}
+
+fn remote_error(e: RemoteError, host: GitHost) -> Response {
+    match e {
+        RemoteError::GitLabNotAvailable | RemoteError::GitHubNotAvailable => {
+            let msg = match host {
+                GitHost::GitLab => "gitlab cli is not installed",
+                GitHost::GitHub => "github cli is not installed",
+            };
+            (StatusCode::NOT_FOUND, Json(ApiError::new(msg))).into_response()
+        }
+        e => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
+    }
+}
+
+fn optional_hostname(raw: Option<&String>) -> Option<&str> {
+    raw.map(String::as_str).filter(|s| !s.is_empty())
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GitLabLogoutRequest {
+pub struct HostRequest {
     pub hostname: Option<String>,
 }
 
@@ -65,59 +110,65 @@ async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> 
 async fn login_gitlab(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Json(req): Json<GitLabLoginRequest>,
+    Json(req): Json<HostRequest>,
 ) -> Response {
-    let hostname = req
-        .hostname
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .map(str::to_string);
-
     match state
         .git_remote
-        .login_gitlab(user.id, hostname.as_deref())
+        .login_gitlab(user.id, optional_hostname(req.hostname.as_ref()))
         .await
     {
-        Ok(status) => Json(GitConnection {
-            id: "gitlab",
-            name: "GitLab",
-            enabled: true,
-            available: true,
-            authed: true,
-            account: status.account,
-            host: Some(status.host),
-            coming_soon: false,
-        })
-        .into_response(),
-        Err(RemoteError::GitLabNotAvailable) => (
-            StatusCode::NOT_FOUND,
-            Json(ApiError::new("gitlab cli is not installed")),
-        )
-            .into_response(),
-        Err(e) => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
+        Ok(status) => connection_json(GitHost::GitLab, status),
+        Err(e) => remote_error(e, GitHost::GitLab),
     }
 }
 
 async fn logout_gitlab(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Json(req): Json<GitLabLogoutRequest>,
+    Json(req): Json<HostRequest>,
 ) -> Response {
-    let hostname = req.hostname.as_deref().filter(|s| !s.is_empty());
-
-    match state.git_remote.logout_gitlab(user.id, hostname).await {
+    match state
+        .git_remote
+        .logout_gitlab(user.id, optional_hostname(req.hostname.as_ref()))
+        .await
+    {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(RemoteError::GitLabNotAvailable) => (
-            StatusCode::NOT_FOUND,
-            Json(ApiError::new("gitlab cli is not installed")),
-        )
-            .into_response(),
-        Err(e) => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
+        Err(e) => remote_error(e, GitHost::GitLab),
+    }
+}
+
+async fn login_github(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<HostRequest>,
+) -> Response {
+    match state
+        .git_remote
+        .login_github(user.id, optional_hostname(req.hostname.as_ref()))
+        .await
+    {
+        Ok(status) => connection_json(GitHost::GitHub, status),
+        Err(e) => remote_error(e, GitHost::GitHub),
+    }
+}
+
+async fn logout_github(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<HostRequest>,
+) -> Response {
+    match state
+        .git_remote
+        .logout_github(user.id, optional_hostname(req.hostname.as_ref()))
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => remote_error(e, GitHost::GitHub),
     }
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GitLabProxyQuery {
+pub struct ProxyQuery {
     pub path: String,
     pub hostname: Option<String>,
 }
@@ -125,13 +176,9 @@ pub struct GitLabProxyQuery {
 async fn gitlab_proxy(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Query(q): Query<GitLabProxyQuery>,
+    Query(q): Query<ProxyQuery>,
 ) -> Response {
-    let hostname = q
-        .hostname
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .unwrap_or("gitlab.com");
+    let hostname = optional_hostname(q.hostname.as_ref()).unwrap_or("gitlab.com");
 
     match state
         .git_remote
@@ -149,60 +196,74 @@ async fn gitlab_proxy(
                     .into_response()
             }
         },
-        Err(RemoteError::GitLabNotAvailable) => (
-            StatusCode::NOT_FOUND,
-            Json(ApiError::new("gitlab cli is not installed")),
-        )
-            .into_response(),
-        Err(e) => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
+        Err(e) => remote_error(e, GitHost::GitLab),
+    }
+}
+
+async fn github_proxy(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Query(q): Query<ProxyQuery>,
+) -> Response {
+    let hostname = optional_hostname(q.hostname.as_ref()).unwrap_or("github.com");
+
+    match state
+        .git_remote
+        .github_api(user.id, hostname, &q.path)
+        .await
+    {
+        Ok(output) => match serde_json::from_str::<serde_json::Value>(&output) {
+            Ok(v) => Json(v).into_response(),
+            Err(e) => {
+                tracing::warn!("github proxy returned non-JSON: {e}");
+                (
+                    StatusCode::BAD_GATEWAY,
+                    Json(ApiError::new("GitHub returned invalid JSON")),
+                )
+                    .into_response()
+            }
+        },
+        Err(e) => remote_error(e, GitHost::GitHub),
     }
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GitLabPipelinesQuery {
+pub struct PipelinesQuery {
     pub project: String,
     pub iid: i64,
     pub hostname: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GitLabPipelineJobsQuery {
+pub struct PipelineJobsQuery {
     pub project: String,
     pub pipeline_id: i64,
     pub hostname: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GitLabJobLogQuery {
+pub struct JobLogQuery {
     pub project: String,
     pub job_id: i64,
     pub hostname: Option<String>,
 }
 
+fn bad_request(msg: &str) -> Response {
+    (StatusCode::BAD_REQUEST, Json(ApiError::new(msg))).into_response()
+}
+
 async fn gitlab_pipeline_jobs(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Query(q): Query<GitLabPipelineJobsQuery>,
+    Query(q): Query<PipelineJobsQuery>,
 ) -> Response {
-    let hostname = q
-        .hostname
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .unwrap_or("gitlab.com");
+    let hostname = optional_hostname(q.hostname.as_ref()).unwrap_or("gitlab.com");
 
     if q.project.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiError::new("project is required")),
-        )
-            .into_response();
+        return bad_request("project is required");
     }
     if q.pipeline_id <= 0 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiError::new("pipeline_id must be positive")),
-        )
-            .into_response();
+        return bad_request("pipeline_id must be positive");
     }
 
     match state
@@ -211,39 +272,22 @@ async fn gitlab_pipeline_jobs(
         .await
     {
         Ok(jobs) => Json(jobs).into_response(),
-        Err(RemoteError::GitLabNotAvailable) => (
-            StatusCode::NOT_FOUND,
-            Json(ApiError::new("gitlab cli is not installed")),
-        )
-            .into_response(),
-        Err(e) => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
+        Err(e) => remote_error(e, GitHost::GitLab),
     }
 }
 
 async fn gitlab_job_log(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Query(q): Query<GitLabJobLogQuery>,
+    Query(q): Query<JobLogQuery>,
 ) -> Response {
-    let hostname = q
-        .hostname
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .unwrap_or("gitlab.com");
+    let hostname = optional_hostname(q.hostname.as_ref()).unwrap_or("gitlab.com");
 
     if q.project.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiError::new("project is required")),
-        )
-            .into_response();
+        return bad_request("project is required");
     }
     if q.job_id <= 0 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiError::new("job_id must be positive")),
-        )
-            .into_response();
+        return bad_request("job_id must be positive");
     }
 
     match state
@@ -252,39 +296,22 @@ async fn gitlab_job_log(
         .await
     {
         Ok(log) => Json(log).into_response(),
-        Err(RemoteError::GitLabNotAvailable) => (
-            StatusCode::NOT_FOUND,
-            Json(ApiError::new("gitlab cli is not installed")),
-        )
-            .into_response(),
-        Err(e) => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
+        Err(e) => remote_error(e, GitHost::GitLab),
     }
 }
 
 async fn gitlab_pipelines(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Query(q): Query<GitLabPipelinesQuery>,
+    Query(q): Query<PipelinesQuery>,
 ) -> Response {
-    let hostname = q
-        .hostname
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .unwrap_or("gitlab.com");
+    let hostname = optional_hostname(q.hostname.as_ref()).unwrap_or("gitlab.com");
 
     if q.project.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiError::new("project is required")),
-        )
-            .into_response();
+        return bad_request("project is required");
     }
     if q.iid <= 0 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiError::new("iid must be positive")),
-        )
-            .into_response();
+        return bad_request("iid must be positive");
     }
 
     match state
@@ -293,17 +320,84 @@ async fn gitlab_pipelines(
         .await
     {
         Ok(pipelines) => Json(pipelines).into_response(),
-        Err(RemoteError::GitLabNotAvailable) => (
-            StatusCode::NOT_FOUND,
-            Json(ApiError::new("gitlab cli is not installed")),
-        )
-            .into_response(),
-        Err(e) => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
+        Err(e) => remote_error(e, GitHost::GitLab),
+    }
+}
+
+async fn github_pipeline_jobs(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Query(q): Query<PipelineJobsQuery>,
+) -> Response {
+    let hostname = optional_hostname(q.hostname.as_ref()).unwrap_or("github.com");
+
+    if q.project.is_empty() {
+        return bad_request("project is required");
+    }
+    if q.pipeline_id <= 0 {
+        return bad_request("pipeline_id must be positive");
+    }
+
+    match state
+        .git_remote
+        .github_pipeline_jobs(user.id, hostname, &q.project, q.pipeline_id)
+        .await
+    {
+        Ok(jobs) => Json(jobs).into_response(),
+        Err(e) => remote_error(e, GitHost::GitHub),
+    }
+}
+
+async fn github_job_log(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Query(q): Query<JobLogQuery>,
+) -> Response {
+    let hostname = optional_hostname(q.hostname.as_ref()).unwrap_or("github.com");
+
+    if q.project.is_empty() {
+        return bad_request("project is required");
+    }
+    if q.job_id <= 0 {
+        return bad_request("job_id must be positive");
+    }
+
+    match state
+        .git_remote
+        .github_job_log(user.id, hostname, &q.project, q.job_id)
+        .await
+    {
+        Ok(log) => Json(log).into_response(),
+        Err(e) => remote_error(e, GitHost::GitHub),
+    }
+}
+
+async fn github_pipelines(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Query(q): Query<PipelinesQuery>,
+) -> Response {
+    let hostname = optional_hostname(q.hostname.as_ref()).unwrap_or("github.com");
+
+    if q.project.is_empty() {
+        return bad_request("project is required");
+    }
+    if q.iid <= 0 {
+        return bad_request("iid must be positive");
+    }
+
+    match state
+        .git_remote
+        .github_pipelines(user.id, hostname, &q.project, q.iid)
+        .await
+    {
+        Ok(pipelines) => Json(pipelines).into_response(),
+        Err(e) => remote_error(e, GitHost::GitHub),
     }
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GitLabMergeRequestActionRequest {
+pub struct MergeRequestActionRequest {
     pub project: String,
     pub iid: i64,
     pub action: MergeRequestAction,
@@ -313,27 +407,15 @@ pub struct GitLabMergeRequestActionRequest {
 async fn gitlab_merge_request_action(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Json(req): Json<GitLabMergeRequestActionRequest>,
+    Json(req): Json<MergeRequestActionRequest>,
 ) -> Response {
-    let hostname = req
-        .hostname
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .unwrap_or("gitlab.com");
+    let hostname = optional_hostname(req.hostname.as_ref()).unwrap_or("gitlab.com");
 
     if req.project.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiError::new("project is required")),
-        )
-            .into_response();
+        return bad_request("project is required");
     }
     if req.iid <= 0 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiError::new("iid must be positive")),
-        )
-            .into_response();
+        return bad_request("iid must be positive");
     }
 
     tracing::info!(
@@ -350,11 +432,38 @@ async fn gitlab_merge_request_action(
         .await
     {
         Ok(mr) => Json(mr).into_response(),
-        Err(RemoteError::GitLabNotAvailable) => (
-            StatusCode::NOT_FOUND,
-            Json(ApiError::new("gitlab cli is not installed")),
-        )
-            .into_response(),
-        Err(e) => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
+        Err(e) => remote_error(e, GitHost::GitLab),
+    }
+}
+
+async fn github_pull_request_action(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<MergeRequestActionRequest>,
+) -> Response {
+    let hostname = optional_hostname(req.hostname.as_ref()).unwrap_or("github.com");
+
+    if req.project.is_empty() {
+        return bad_request("project is required");
+    }
+    if req.iid <= 0 {
+        return bad_request("iid must be positive");
+    }
+
+    tracing::info!(
+        user_id = user.id,
+        project = %req.project,
+        iid = req.iid,
+        action = ?req.action,
+        "github pull request action"
+    );
+
+    match state
+        .git_remote
+        .github_pull_request_action(user.id, hostname, &req.project, req.iid, req.action)
+        .await
+    {
+        Ok(pr) => Json(pr).into_response(),
+        Err(e) => remote_error(e, GitHost::GitHub),
     }
 }

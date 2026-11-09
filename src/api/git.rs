@@ -819,18 +819,18 @@ pub struct RemoteInfoOut {
     pub web_url: String,
 }
 
-/// Resolve the scoped working directory's git remote to a GitLab project.
+/// Resolve the scoped working directory's git remote to a host and project.
 ///
 /// Runs the same `thread_id` scoping as every other git route: a worktree
 /// thread resolves its own checkout's remote. The error is a ready response —
 /// `404` when the scope is not a repo, has no usable remote, or the remote is
-/// not GitLab.
-async fn gitlab_remote(
+/// not a supported git host.
+async fn remote_project(
     state: &AppState,
     user: &crate::db::UserRow,
     project_id: i64,
     thread_id: Option<&str>,
-) -> Result<crate::git::GitLabProjectRef, Box<Response>> {
+) -> Result<(crate::git::GitHost, crate::git::RemoteProjectRef), Box<Response>> {
     let (git, path) = git_target(state, user, project_id, thread_id).await?;
 
     let url = match git.remote_url(path.as_path()).await {
@@ -848,12 +848,12 @@ async fn gitlab_remote(
         Err(e) => return Err(Box::new(error_response(e))),
     };
 
-    crate::git::parse_gitlab_remote_url(&url).ok_or_else(|| {
+    crate::git::detect_remote(&url).ok_or_else(|| {
         Box::new(
             (
                 StatusCode::NOT_FOUND,
                 Json(crate::api::ApiError::new(
-                    "project remote is not a GitLab repository",
+                    "project remote is not a supported git host",
                 )),
             )
                 .into_response(),
@@ -868,6 +868,11 @@ fn remote_error(e: crate::git::RemoteError) -> Response {
             Json(crate::api::ApiError::new("gitlab cli is not installed")),
         )
             .into_response(),
+        crate::git::RemoteError::GitHubNotAvailable => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("github cli is not installed")),
+        )
+            .into_response(),
         e => (
             e.status_code(),
             Json(crate::api::ApiError::new(e.to_string())),
@@ -879,16 +884,16 @@ fn remote_error(e: crate::git::RemoteError) -> Response {
 /// Describe the repository's git host remote.
 ///
 /// Returns `404` when the scope is not a repository or the remote is not a
-/// supported host; GitLab is the only provider for now.
+/// supported host (GitLab or GitHub).
 async fn remote_info(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Path(id): Path<i64>,
     Query(q): Query<RepoQuery>,
 ) -> Response {
-    match gitlab_remote(&state, &user, id, q.thread_id.as_deref()).await {
-        Ok(g) => Json(RemoteInfoOut {
-            provider: "gitlab",
+    match remote_project(&state, &user, id, q.thread_id.as_deref()).await {
+        Ok((host, g)) => Json(RemoteInfoOut {
+            provider: host.id(),
             web_url: format!("https://{}/{}", g.hostname, g.project_path),
             hostname: g.hostname,
             project_path: g.project_path,
@@ -898,28 +903,44 @@ async fn remote_info(
     }
 }
 
-/// The repo's open merge requests for the sidebar git panel.
+/// The repo's open merge/pull requests for the sidebar git panel.
 async fn merge_requests(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Path(id): Path<i64>,
     Query(q): Query<RepoQuery>,
 ) -> Response {
-    let gitlab = match gitlab_remote(&state, &user, id, q.thread_id.as_deref()).await {
+    let (host, remote) = match remote_project(&state, &user, id, q.thread_id.as_deref()).await {
         Ok(g) => g,
         Err(r) => return *r,
     };
 
-    match state
-        .git_remote
-        .gitlab_merge_requests(
-            user.id,
-            &gitlab.hostname,
-            &gitlab.project_path,
-            REMOTE_LIST_PER_PAGE,
-        )
-        .await
-    {
+    let result = match host {
+        crate::git::GitHost::GitLab => {
+            state
+                .git_remote
+                .gitlab_merge_requests(
+                    user.id,
+                    &remote.hostname,
+                    &remote.project_path,
+                    REMOTE_LIST_PER_PAGE,
+                )
+                .await
+        }
+        crate::git::GitHost::GitHub => {
+            state
+                .git_remote
+                .github_pull_requests(
+                    user.id,
+                    &remote.hostname,
+                    &remote.project_path,
+                    REMOTE_LIST_PER_PAGE,
+                )
+                .await
+        }
+    };
+
+    match result {
         Ok(mrs) => Json(mrs).into_response(),
         Err(e) => remote_error(e),
     }
@@ -932,33 +953,49 @@ async fn issues(
     Path(id): Path<i64>,
     Query(q): Query<RepoQuery>,
 ) -> Response {
-    let gitlab = match gitlab_remote(&state, &user, id, q.thread_id.as_deref()).await {
+    let (host, remote) = match remote_project(&state, &user, id, q.thread_id.as_deref()).await {
         Ok(g) => g,
         Err(r) => return *r,
     };
 
-    match state
-        .git_remote
-        .gitlab_issues(
-            user.id,
-            &gitlab.hostname,
-            &gitlab.project_path,
-            REMOTE_LIST_PER_PAGE,
-        )
-        .await
-    {
+    let result = match host {
+        crate::git::GitHost::GitLab => {
+            state
+                .git_remote
+                .gitlab_issues(
+                    user.id,
+                    &remote.hostname,
+                    &remote.project_path,
+                    REMOTE_LIST_PER_PAGE,
+                )
+                .await
+        }
+        crate::git::GitHost::GitHub => {
+            state
+                .git_remote
+                .github_issues(
+                    user.id,
+                    &remote.hostname,
+                    &remote.project_path,
+                    REMOTE_LIST_PER_PAGE,
+                )
+                .await
+        }
+    };
+
+    match result {
         Ok(issues) => Json(issues).into_response(),
         Err(e) => remote_error(e),
     }
 }
 
-/// Find a merge request linked to the project.
+/// Find a merge/pull request linked to the project.
 ///
-/// Resolves the project's git remote URL to a GitLab project. With `branch`,
-/// returns the open MR for that source branch. With `iid`, returns the MR with
-/// that IID regardless of state. Returns the MR summary, `204` when no MR
-/// exists, or an error when the project is not a GitLab repository or glab is
-/// unavailable.
+/// Resolves the project's git remote URL to its host and project. With
+/// `branch`, returns the open MR/PR for that source branch. With `iid`,
+/// returns the one with that number regardless of state. Returns the summary,
+/// `204` when none exists, or an error when the remote is not a supported git
+/// host or the host CLI is unavailable.
 async fn merge_request_for_branch(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -989,28 +1026,50 @@ async fn merge_request_for_branch(
             .into_response();
     }
 
-    let gitlab = match gitlab_remote(&state, &user, id, None).await {
+    let (host, remote) = match remote_project(&state, &user, id, None).await {
         Ok(g) => g,
         Err(r) => return *r,
     };
 
     let result = if let Some(iid) = q.iid {
-        state
-            .git_remote
-            .gitlab_merge_request(user.id, &gitlab.hostname, &gitlab.project_path, iid)
-            .await
-            .map(Some)
+        match host {
+            crate::git::GitHost::GitLab => state
+                .git_remote
+                .gitlab_merge_request(user.id, &remote.hostname, &remote.project_path, iid)
+                .await
+                .map(Some),
+            crate::git::GitHost::GitHub => state
+                .git_remote
+                .github_pull_request(user.id, &remote.hostname, &remote.project_path, iid)
+                .await
+                .map(Some),
+        }
     } else {
         let branch = q.branch.as_deref().unwrap_or("");
-        state
-            .git_remote
-            .gitlab_merge_request_for_branch(
-                user.id,
-                &gitlab.hostname,
-                &gitlab.project_path,
-                branch,
-            )
-            .await
+        match host {
+            crate::git::GitHost::GitLab => {
+                state
+                    .git_remote
+                    .gitlab_merge_request_for_branch(
+                        user.id,
+                        &remote.hostname,
+                        &remote.project_path,
+                        branch,
+                    )
+                    .await
+            }
+            crate::git::GitHost::GitHub => {
+                state
+                    .git_remote
+                    .github_pull_request_for_branch(
+                        user.id,
+                        &remote.hostname,
+                        &remote.project_path,
+                        branch,
+                    )
+                    .await
+            }
+        }
     };
 
     match result {

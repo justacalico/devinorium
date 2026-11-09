@@ -256,15 +256,15 @@ async fn resolve_linked_mr(
         return Ok(None);
     }
 
-    let linked = match crate::git::parse_gitlab_merge_request_url(url) {
+    let linked = match crate::git::parse_gitlab_merge_request_url(url)
+        .or_else(|| crate::git::parse_github_pull_request_url(url))
+    {
         Some(l) => l,
         None => {
             return Err(Box::new(
                 (
                     StatusCode::BAD_REQUEST,
-                    Json(crate::api::ApiError::new(
-                        "not a valid GitLab merge request URL",
-                    )),
+                    Json(crate::api::ApiError::new("not a valid merge request URL")),
                 )
                     .into_response(),
             ));
@@ -343,14 +343,14 @@ async fn resolve_linked_mr(
         }
     };
 
-    let remote = match crate::git::parse_gitlab_remote_url(&remote_url) {
+    let (host, remote) = match crate::git::detect_remote(&remote_url) {
         Some(r) => r,
         None => {
             return Err(Box::new(
                 (
                     StatusCode::BAD_REQUEST,
                     Json(crate::api::ApiError::new(
-                        "project remote is not a GitLab repository",
+                        "project remote is not a supported git host",
                     )),
                 )
                     .into_response(),
@@ -358,7 +358,10 @@ async fn resolve_linked_mr(
         }
     };
 
-    if linked.hostname != remote.hostname || linked.project_path != remote.project_path {
+    if linked.provider != host
+        || linked.hostname != remote.hostname
+        || linked.project_path != remote.project_path
+    {
         return Err(Box::new(
             (
                 StatusCode::BAD_REQUEST,

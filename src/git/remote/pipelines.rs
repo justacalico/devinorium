@@ -1,13 +1,14 @@
-//! GitLab CI/CD pipeline fetching and parsing.
+//! CI/CD pipeline and workflow run fetching for GitLab and GitHub.
 
 use chrono::{DateTime, Utc};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
+use super::parse::validate_project_path;
 use super::{GitRemoteService, RemoteError};
 
-/// A single CI/CD pipeline for a GitLab merge request.
+/// A single CI/CD pipeline or workflow run for a merge/pull request.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct GitLabPipeline {
+pub struct RemotePipeline {
     pub id: i64,
     pub status: String,
     pub name: String,
@@ -17,9 +18,9 @@ pub struct GitLabPipeline {
     pub updated_at: String,
 }
 
-/// A single job inside a GitLab CI/CD pipeline.
+/// A single job inside a pipeline or workflow run.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct GitLabPipelineJob {
+pub struct RemotePipelineJob {
     pub id: i64,
     pub name: String,
     pub status: String,
@@ -30,10 +31,10 @@ pub struct GitLabPipelineJob {
     pub duration: f64,
 }
 
-/// A job and its raw trace output.
+/// A job and its raw log output.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct GitLabJobLog {
-    pub job: GitLabPipelineJob,
+pub struct RemoteJobLog {
+    pub job: RemotePipelineJob,
     pub trace: String,
 }
 
@@ -49,7 +50,7 @@ impl GitRemoteService {
         hostname: &str,
         project_path: &str,
         iid: i64,
-    ) -> Result<Vec<GitLabPipeline>, RemoteError> {
+    ) -> Result<Vec<RemotePipeline>, RemoteError> {
         validate_project_path(project_path)?;
         if iid <= 0 {
             return Err(RemoteError::StatusFailed("iid must be positive".into()));
@@ -64,7 +65,7 @@ impl GitRemoteService {
             RemoteError::StatusFailed(format!("gitlab returned invalid pipeline json: {e}"))
         })?;
 
-        let mut pipelines: Vec<GitLabPipeline> = pipelines
+        let mut pipelines: Vec<RemotePipeline> = pipelines
             .into_iter()
             .map(parse_pipeline)
             .collect::<Result<Vec<_>, _>>()?;
@@ -86,7 +87,7 @@ impl GitRemoteService {
         hostname: &str,
         project_path: &str,
         pipeline_id: i64,
-    ) -> Result<Vec<GitLabPipelineJob>, RemoteError> {
+    ) -> Result<Vec<RemotePipelineJob>, RemoteError> {
         validate_project_path(project_path)?;
         if pipeline_id <= 0 {
             return Err(RemoteError::StatusFailed(
@@ -114,7 +115,7 @@ impl GitRemoteService {
         hostname: &str,
         project_path: &str,
         job_id: i64,
-    ) -> Result<GitLabPipelineJob, RemoteError> {
+    ) -> Result<RemotePipelineJob, RemoteError> {
         validate_project_path(project_path)?;
         if job_id <= 0 {
             return Err(RemoteError::StatusFailed("job id must be positive".into()));
@@ -163,7 +164,7 @@ impl GitRemoteService {
         hostname: &str,
         project_path: &str,
         job_id: i64,
-    ) -> Result<GitLabJobLog, RemoteError> {
+    ) -> Result<RemoteJobLog, RemoteError> {
         validate_project_path(project_path)?;
         if job_id <= 0 {
             return Err(RemoteError::StatusFailed("job id must be positive".into()));
@@ -174,26 +175,159 @@ impl GitRemoteService {
             self.gitlab_job_trace(user_id, hostname, project_path, job_id),
         )
         .await?;
-        Ok(GitLabJobLog { job, trace })
+        Ok(RemoteJobLog { job, trace })
     }
-}
 
-fn validate_project_path(path: &str) -> Result<(), RemoteError> {
-    if path.is_empty() {
-        return Err(RemoteError::StatusFailed("project is required".into()));
+    /// Fetch the GitHub Actions workflow runs for a pull request.
+    ///
+    /// GitHub has no per-PR pipeline list; the runs are the ones recorded
+    /// against the PR's head commit. The list is sorted with the most
+    /// recently updated run first.
+    pub async fn github_pipelines(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        iid: i64,
+    ) -> Result<Vec<RemotePipeline>, RemoteError> {
+        validate_project_path(project_path)?;
+        if iid <= 0 {
+            return Err(RemoteError::StatusFailed("iid must be positive".into()));
+        }
+
+        let repo = Self::github_repo_path(project_path)?;
+        let output = self
+            .github_api(user_id, hostname, &format!("{repo}/pulls/{iid}"))
+            .await?;
+        let pr: serde_json::Value = serde_json::from_str(&output).map_err(|e| {
+            RemoteError::StatusFailed(format!("github returned invalid pull request json: {e}"))
+        })?;
+        let head_sha = pr["head"]["sha"].as_str().unwrap_or("");
+        if head_sha.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let path = format!("{repo}/actions/runs?head_sha={head_sha}&per_page=30");
+        let output = self.github_api(user_id, hostname, &path).await?;
+        let value: serde_json::Value = serde_json::from_str(&output).map_err(|e| {
+            RemoteError::StatusFailed(format!("github returned invalid workflow json: {e}"))
+        })?;
+        let runs = value["workflow_runs"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+
+        let mut pipelines: Vec<RemotePipeline> = runs
+            .into_iter()
+            .map(parse_workflow_run)
+            .collect::<Result<Vec<_>, _>>()?;
+        pipelines.sort_by(|a, b| {
+            let a_time = parse_timestamp(&a.updated_at);
+            let b_time = parse_timestamp(&b.updated_at);
+            b_time.cmp(&a_time)
+        });
+        Ok(pipelines)
     }
-    if path.starts_with('/') || path.ends_with('/') {
-        return Err(RemoteError::StatusFailed("invalid project path".into()));
+
+    /// Fetch the jobs for a GitHub Actions workflow run.
+    pub async fn github_pipeline_jobs(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        pipeline_id: i64,
+    ) -> Result<Vec<RemotePipelineJob>, RemoteError> {
+        validate_project_path(project_path)?;
+        if pipeline_id <= 0 {
+            return Err(RemoteError::StatusFailed(
+                "pipeline id must be positive".into(),
+            ));
+        }
+
+        let repo = Self::github_repo_path(project_path)?;
+        let path = format!("{repo}/actions/runs/{pipeline_id}/jobs?per_page=100");
+
+        let output = self.github_api(user_id, hostname, &path).await?;
+        let value: serde_json::Value = serde_json::from_str(&output).map_err(|e| {
+            RemoteError::StatusFailed(format!("github returned invalid job json: {e}"))
+        })?;
+        let jobs = value["jobs"].as_array().cloned().unwrap_or_default();
+
+        jobs.into_iter()
+            .map(parse_workflow_job)
+            .collect::<Result<Vec<_>, _>>()
     }
-    if path.contains("..") || path.chars().any(|c| c.is_whitespace() || c.is_control()) {
-        return Err(RemoteError::StatusFailed("invalid project path".into()));
+
+    /// Fetch a single GitHub Actions job for a repository.
+    pub async fn github_pipeline_job(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        job_id: i64,
+    ) -> Result<RemotePipelineJob, RemoteError> {
+        validate_project_path(project_path)?;
+        if job_id <= 0 {
+            return Err(RemoteError::StatusFailed("job id must be positive".into()));
+        }
+
+        let repo = Self::github_repo_path(project_path)?;
+        let output = self
+            .github_api(user_id, hostname, &format!("{repo}/actions/jobs/{job_id}"))
+            .await?;
+        let value: serde_json::Value = serde_json::from_str(&output).map_err(|e| {
+            RemoteError::StatusFailed(format!("github returned invalid job json: {e}"))
+        })?;
+        parse_workflow_job(value)
     }
-    let mut parts = path.split('/');
-    let first = parts.next().unwrap_or("");
-    if first.is_empty() || parts.any(|s| s.is_empty()) {
-        return Err(RemoteError::StatusFailed("invalid project path".into()));
+
+    /// Fetch the raw log for a single GitHub Actions job.
+    ///
+    /// `gh api` follows the endpoint's redirect to the log archive and
+    /// returns plain text. A missing log is treated as an empty string so
+    /// queued jobs that have not produced output yet are not an error.
+    pub async fn github_job_trace(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        job_id: i64,
+    ) -> Result<String, RemoteError> {
+        validate_project_path(project_path)?;
+        if job_id <= 0 {
+            return Err(RemoteError::StatusFailed("job id must be positive".into()));
+        }
+
+        let repo = Self::github_repo_path(project_path)?;
+        let path = format!("{repo}/actions/jobs/{job_id}/logs");
+
+        match self.github_api(user_id, hostname, &path).await {
+            Ok(trace) => Ok(trace),
+            Err(RemoteError::StatusFailed(ref msg)) if is_trace_not_found(msg) => Ok(String::new()),
+            Err(e) => Err(e),
+        }
     }
-    Ok(())
+
+    /// Fetch the log and status for a single GitHub Actions job.
+    pub async fn github_job_log(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        job_id: i64,
+    ) -> Result<RemoteJobLog, RemoteError> {
+        validate_project_path(project_path)?;
+        if job_id <= 0 {
+            return Err(RemoteError::StatusFailed("job id must be positive".into()));
+        }
+
+        let (job, trace) = futures::future::try_join(
+            self.github_pipeline_job(user_id, hostname, project_path, job_id),
+            self.github_job_trace(user_id, hostname, project_path, job_id),
+        )
+        .await?;
+        Ok(RemoteJobLog { job, trace })
+    }
 }
 
 fn is_trace_not_found(msg: &str) -> bool {
@@ -207,7 +341,7 @@ fn parse_timestamp(s: &str) -> DateTime<Utc> {
         .unwrap_or(DateTime::UNIX_EPOCH)
 }
 
-fn parse_pipeline(value: serde_json::Value) -> Result<GitLabPipeline, RemoteError> {
+fn parse_pipeline(value: serde_json::Value) -> Result<RemotePipeline, RemoteError> {
     let id = value["id"]
         .as_i64()
         .or_else(|| value["id"].as_str().and_then(|s| s.parse().ok()))
@@ -240,7 +374,7 @@ fn parse_pipeline(value: serde_json::Value) -> Result<GitLabPipeline, RemoteErro
     let created_at = value["created_at"].as_str().unwrap_or("");
     let updated_at = value["updated_at"].as_str().unwrap_or("");
 
-    Ok(GitLabPipeline {
+    Ok(RemotePipeline {
         id,
         status: status.to_string(),
         name: name.to_string(),
@@ -251,7 +385,7 @@ fn parse_pipeline(value: serde_json::Value) -> Result<GitLabPipeline, RemoteErro
     })
 }
 
-fn parse_pipeline_job(value: serde_json::Value) -> Result<GitLabPipelineJob, RemoteError> {
+fn parse_pipeline_job(value: serde_json::Value) -> Result<RemotePipelineJob, RemoteError> {
     let id = value["id"]
         .as_i64()
         .or_else(|| value["id"].as_str().and_then(|s| s.parse().ok()))
@@ -271,12 +405,105 @@ fn parse_pipeline_job(value: serde_json::Value) -> Result<GitLabPipelineJob, Rem
     let finished_at = value["finished_at"].as_str().unwrap_or("");
     let duration = value["duration"].as_f64().unwrap_or(0.0);
 
-    Ok(GitLabPipelineJob {
+    Ok(RemotePipelineJob {
         id,
         name: name.to_string(),
         status: status.to_string(),
         stage: stage.to_string(),
         web_url: web_url.to_string(),
+        started_at: started_at.to_string(),
+        finished_at: finished_at.to_string(),
+        duration,
+    })
+}
+
+/// Map a GitHub Actions `status`/`conclusion` pair onto the GitLab
+/// vocabulary the UI already renders: completed runs report their
+/// conclusion, in-flight states become `running`/`pending`.
+fn normalize_github_status(status: &str, conclusion: &str) -> String {
+    match status {
+        "completed" => match conclusion {
+            "success" => "success".into(),
+            "failure" | "startup_failure" | "timed_out" | "stale" => "failed".into(),
+            "cancelled" => "canceled".into(),
+            "skipped" | "neutral" => "skipped".into(),
+            "" => "unknown".into(),
+            other => other.to_string(),
+        },
+        "in_progress" => "running".into(),
+        "queued" | "requested" | "waiting" | "pending" => "pending".into(),
+        "" => "unknown".into(),
+        other => other.to_string(),
+    }
+}
+
+fn parse_workflow_run(value: serde_json::Value) -> Result<RemotePipeline, RemoteError> {
+    let id = value["id"]
+        .as_i64()
+        .or_else(|| value["id"].as_str().and_then(|s| s.parse().ok()))
+        .unwrap_or(0);
+
+    if id <= 0 {
+        return Err(RemoteError::StatusFailed(
+            "github returned an invalid workflow run id".into(),
+        ));
+    }
+
+    let status = normalize_github_status(
+        value["status"].as_str().unwrap_or(""),
+        value["conclusion"].as_str().unwrap_or(""),
+    );
+
+    let name = value["name"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .or_else(|| value["display_title"].as_str())
+        .unwrap_or(&status)
+        .to_string();
+
+    Ok(RemotePipeline {
+        id,
+        status,
+        name,
+        web_url: value["html_url"].as_str().unwrap_or("").to_string(),
+        ref_name: value["head_branch"].as_str().unwrap_or("").to_string(),
+        created_at: value["created_at"].as_str().unwrap_or("").to_string(),
+        updated_at: value["updated_at"].as_str().unwrap_or("").to_string(),
+    })
+}
+
+fn parse_workflow_job(value: serde_json::Value) -> Result<RemotePipelineJob, RemoteError> {
+    let id = value["id"]
+        .as_i64()
+        .or_else(|| value["id"].as_str().and_then(|s| s.parse().ok()))
+        .unwrap_or(0);
+
+    if id <= 0 {
+        return Err(RemoteError::StatusFailed(
+            "github returned an invalid job id".into(),
+        ));
+    }
+
+    let status = normalize_github_status(
+        value["status"].as_str().unwrap_or(""),
+        value["conclusion"].as_str().unwrap_or(""),
+    );
+
+    let started_at = value["started_at"].as_str().unwrap_or("");
+    let finished_at = value["completed_at"].as_str().unwrap_or("");
+    let duration = if started_at.is_empty() || finished_at.is_empty() {
+        0.0
+    } else {
+        (parse_timestamp(finished_at) - parse_timestamp(started_at)).num_milliseconds() as f64
+            / 1000.0
+    };
+
+    Ok(RemotePipelineJob {
+        id,
+        name: value["name"].as_str().unwrap_or("").to_string(),
+        status,
+        stage: value["workflow_name"].as_str().unwrap_or("").to_string(),
+        web_url: value["html_url"].as_str().unwrap_or("").to_string(),
         started_at: started_at.to_string(),
         finished_at: finished_at.to_string(),
         duration,
@@ -368,9 +595,90 @@ mod tests {
     }
 
     #[test]
+    fn normalize_github_status_maps_to_gitlab_vocabulary() {
+        assert_eq!(normalize_github_status("completed", "success"), "success");
+        assert_eq!(normalize_github_status("completed", "failure"), "failed");
+        assert_eq!(
+            normalize_github_status("completed", "startup_failure"),
+            "failed"
+        );
+        assert_eq!(normalize_github_status("completed", "timed_out"), "failed");
+        assert_eq!(
+            normalize_github_status("completed", "cancelled"),
+            "canceled"
+        );
+        assert_eq!(normalize_github_status("completed", "skipped"), "skipped");
+        assert_eq!(normalize_github_status("completed", "neutral"), "skipped");
+        assert_eq!(normalize_github_status("in_progress", ""), "running");
+        assert_eq!(normalize_github_status("queued", ""), "pending");
+        assert_eq!(normalize_github_status("waiting", ""), "pending");
+        assert_eq!(normalize_github_status("requested", ""), "pending");
+        assert_eq!(normalize_github_status("", ""), "unknown");
+        assert_eq!(
+            normalize_github_status("completed", "action_required"),
+            "action_required"
+        );
+    }
+
+    #[test]
+    fn parse_workflow_run_reads_github_fields() {
+        let value = serde_json::json!({
+            "id": 42,
+            "status": "completed",
+            "conclusion": "success",
+            "name": "CI",
+            "html_url": "https://github.com/o/r/actions/runs/42",
+            "head_branch": "feature",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-02T00:00:00Z",
+        });
+        let p = parse_workflow_run(value).unwrap();
+        assert_eq!(p.id, 42);
+        assert_eq!(p.status, "success");
+        assert_eq!(p.name, "CI");
+        assert_eq!(p.ref_name, "feature");
+        assert_eq!(p.web_url, "https://github.com/o/r/actions/runs/42");
+    }
+
+    #[test]
+    fn parse_workflow_run_maps_running_and_rejects_bad_id() {
+        let value = serde_json::json!({
+            "id": 7,
+            "status": "in_progress",
+            "conclusion": null,
+            "name": "build",
+        });
+        let p = parse_workflow_run(value).unwrap();
+        assert_eq!(p.status, "running");
+
+        let value = serde_json::json!({"id": 0});
+        assert!(parse_workflow_run(value).is_err());
+    }
+
+    #[test]
+    fn parse_workflow_job_reads_fields_and_computes_duration() {
+        let value = serde_json::json!({
+            "id": 101,
+            "name": "cargo test",
+            "status": "completed",
+            "conclusion": "failure",
+            "workflow_name": "CI",
+            "html_url": "https://github.com/o/r/actions/runs/9/job/101",
+            "started_at": "2026-01-01T00:00:00Z",
+            "completed_at": "2026-01-01T00:01:00Z",
+        });
+        let job = parse_workflow_job(value).unwrap();
+        assert_eq!(job.id, 101);
+        assert_eq!(job.status, "failed");
+        assert_eq!(job.stage, "CI");
+        assert_eq!(job.finished_at, "2026-01-01T00:01:00Z");
+        assert!((job.duration - 60.0).abs() < 0.001);
+    }
+
+    #[test]
     fn pipelines_sort_by_updated_at_descending() {
         let mut pipelines = [
-            GitLabPipeline {
+            RemotePipeline {
                 id: 1,
                 status: "success".into(),
                 name: "old".into(),
@@ -379,7 +687,7 @@ mod tests {
                 created_at: "".into(),
                 updated_at: "2026-01-01T00:00:00Z".into(),
             },
-            GitLabPipeline {
+            RemotePipeline {
                 id: 2,
                 status: "failed".into(),
                 name: "new".into(),
@@ -401,7 +709,7 @@ mod tests {
     #[test]
     fn missing_timestamp_sorts_to_bottom() {
         let mut pipelines = [
-            GitLabPipeline {
+            RemotePipeline {
                 id: 1,
                 status: "failed".into(),
                 name: "missing".into(),
@@ -410,7 +718,7 @@ mod tests {
                 created_at: "".into(),
                 updated_at: "".into(),
             },
-            GitLabPipeline {
+            RemotePipeline {
                 id: 2,
                 status: "success".into(),
                 name: "has".into(),

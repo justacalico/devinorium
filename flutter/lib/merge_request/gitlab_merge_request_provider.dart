@@ -38,6 +38,12 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
   AsyncValue<MergeRequestDetail> get value => _value;
 
   @override
+  bool get supportsPipelines => true;
+
+  @override
+  bool get supportsFiles => true;
+
+  @override
   void dispose() {
     _disposed = true;
     super.dispose();
@@ -318,7 +324,7 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
 
   static _MergeRequestRef? _parseRef(String url) {
     final ref = LinkedMergeRequestRef.tryParse(url);
-    if (ref == null) return null;
+    if (ref == null || ref.provider != 'gitlab') return null;
     return _MergeRequestRef(
       hostname: ref.hostname,
       projectPath: ref.projectPath,

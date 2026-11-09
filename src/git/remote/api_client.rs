@@ -1,4 +1,4 @@
-//! Low-level `glab` CLI invocation and API proxying.
+//! Low-level `glab`/`gh` CLI invocation and API proxying.
 
 use std::path::Path;
 use std::time::Duration;
@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::{sleep, timeout};
 
-use super::{GitRemoteService, RemoteError};
+use super::{CliKind, GitHost, GitRemoteService, RemoteError};
 
 impl GitRemoteService {
     /// Call the GitLab API through `glab api` for the configured host.
@@ -24,11 +24,16 @@ impl GitRemoteService {
             .glab_bin
             .as_ref()
             .ok_or(RemoteError::GitLabNotAvailable)?;
-        let host = Self::api_host(hostname);
+        let host = Self::api_host(GitHost::GitLab, hostname);
         Self::check_api_path(path)?;
 
-        self.run(user_id, bin, &["api", path, "--hostname", host])
-            .await
+        self.run(
+            user_id,
+            CliKind::Glab,
+            bin,
+            &["api", path, "--hostname", host],
+        )
+        .await
     }
 
     /// Call the GitLab API with an explicit HTTP method and body fields.
@@ -48,30 +53,67 @@ impl GitRemoteService {
             .glab_bin
             .as_ref()
             .ok_or(RemoteError::GitLabNotAvailable)?;
-        let host = Self::api_host(hostname);
+        let host = Self::api_host(GitHost::GitLab, hostname);
         Self::check_api_path(path)?;
 
-        let mut args = vec![
-            "api".to_string(),
-            path.to_string(),
-            "--hostname".to_string(),
-            host.to_string(),
-            "--method".to_string(),
-            method.to_string(),
-        ];
-        for (key, value) in fields {
-            // `glab` reads `@file` values from disk; refuse them outright.
-            if value.starts_with('@') {
-                return Err(RemoteError::StatusFailed(
-                    "field values must not start with @".into(),
-                ));
-            }
-            args.push("--field".to_string());
-            args.push(format!("{key}={value}"));
-        }
-
+        let args = api_write_args(path, host, method, fields)?;
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
-        self.run_with_timeout(user_id, bin, &args, timeout).await
+        self.run_with_timeout(user_id, CliKind::Glab, bin, &args, timeout)
+            .await
+    }
+
+    /// Call the GitHub API through `gh api` for the configured host.
+    ///
+    /// [path] is a GitHub REST path such as `repos/owner/repo/pulls/1`, or
+    /// `graphql` for GraphQL calls. Only `repos/` and `graphql` paths are
+    /// allowed to keep the proxy scoped to repository data.
+    pub async fn github_api(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        path: &str,
+    ) -> Result<String, RemoteError> {
+        let bin = self
+            .gh_bin
+            .as_ref()
+            .ok_or(RemoteError::GitHubNotAvailable)?;
+        let host = Self::api_host(GitHost::GitHub, hostname);
+        Self::check_github_api_path(path)?;
+
+        self.run(
+            user_id,
+            CliKind::Gh,
+            bin,
+            &["api", path, "--hostname", host],
+        )
+        .await
+    }
+
+    /// Call the GitHub API with an explicit HTTP method and body fields.
+    ///
+    /// Fields are passed as `--field key=value`; for `graphql` paths the
+    /// `query` field carries the document and every other field becomes a
+    /// variable.
+    pub(super) async fn github_api_write(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        method: &str,
+        path: &str,
+        fields: &[(&str, &str)],
+        timeout: Duration,
+    ) -> Result<String, RemoteError> {
+        let bin = self
+            .gh_bin
+            .as_ref()
+            .ok_or(RemoteError::GitHubNotAvailable)?;
+        let host = Self::api_host(GitHost::GitHub, hostname);
+        Self::check_github_api_path(path)?;
+
+        let args = api_write_args(path, host, method, fields)?;
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        self.run_with_timeout(user_id, CliKind::Gh, bin, &args, timeout)
+            .await
     }
 
     /// Run a glab/gh command and return stdout, treating a non-zero exit as an
@@ -80,10 +122,11 @@ impl GitRemoteService {
     pub(super) async fn run(
         &self,
         user_id: i64,
+        kind: CliKind,
         bin: &Path,
         args: &[&str],
     ) -> Result<String, RemoteError> {
-        self.run_with_timeout(user_id, bin, args, Duration::from_secs(30))
+        self.run_with_timeout(user_id, kind, bin, args, Duration::from_secs(30))
             .await
     }
 
@@ -92,12 +135,14 @@ impl GitRemoteService {
     pub(super) async fn run_with_timeout(
         &self,
         user_id: i64,
+        kind: CliKind,
         bin: &Path,
         args: &[&str],
         timeout_duration: Duration,
     ) -> Result<String, RemoteError> {
-        let (stdout, stderr, success) =
-            self.run_parts(user_id, bin, args, timeout_duration).await?;
+        let (stdout, stderr, success) = self
+            .run_parts(user_id, kind, bin, args, timeout_duration)
+            .await?;
         if !success {
             let combined = format!("{stdout}\n{stderr}");
             let msg = combined.trim();
@@ -115,11 +160,12 @@ impl GitRemoteService {
     pub(super) async fn run_raw(
         &self,
         user_id: i64,
+        kind: CliKind,
         bin: &Path,
         args: &[&str],
     ) -> Result<(String, bool), RemoteError> {
         let (stdout, stderr, success) = self
-            .run_parts(user_id, bin, args, Duration::from_secs(30))
+            .run_parts(user_id, kind, bin, args, Duration::from_secs(30))
             .await?;
         Ok((format!("{stdout}\n{stderr}"), success))
     }
@@ -132,6 +178,7 @@ impl GitRemoteService {
     pub(super) async fn run_parts(
         &self,
         user_id: i64,
+        kind: CliKind,
         bin: &Path,
         args: &[&str],
         timeout_duration: Duration,
@@ -140,7 +187,7 @@ impl GitRemoteService {
         const BACKOFF: Duration = Duration::from_millis(25);
 
         for attempt in 0..MAX_ATTEMPTS {
-            let mut cmd = self.env_cmd(user_id, bin)?;
+            let mut cmd = self.env_cmd(user_id, kind, bin)?;
             cmd.args(args);
 
             let output = match timeout(timeout_duration, cmd.output()).await {
@@ -169,11 +216,19 @@ impl GitRemoteService {
         unreachable!()
     }
 
-    pub(super) fn env_cmd(&self, user_id: i64, bin: &Path) -> Result<Command, RemoteError> {
+    pub(super) fn env_cmd(
+        &self,
+        user_id: i64,
+        kind: CliKind,
+        bin: &Path,
+    ) -> Result<Command, RemoteError> {
         let mut cmd = Command::new(bin);
 
         if self.isolated {
-            let user_dir = self.config_root.join("glab").join(user_id.to_string());
+            let user_dir = self
+                .config_root
+                .join(kind.config_dir_name())
+                .join(user_id.to_string());
             let xdg_config = user_dir.join(".config");
             std::fs::create_dir_all(&xdg_config)
                 .map_err(|e| RemoteError::StatusFailed(format!("config dir failed: {e}")))?;
@@ -186,9 +241,7 @@ impl GitRemoteService {
             cmd.current_dir(cwd);
         }
 
-        cmd.env("GLAB_CHECK_UPDATE", "false")
-            .env("GLAB_NO_PROMPT", "true")
-            .env("NO_COLOR", "1")
+        cmd.env("NO_COLOR", "1")
             .env(
                 "USER",
                 std::env::var("USER").unwrap_or_else(|_| user_id.to_string()),
@@ -199,17 +252,67 @@ impl GitRemoteService {
             )
             .env("PATH", std::env::var("PATH").unwrap_or_default());
 
-        for key in [
-            "GITLAB_TOKEN",
-            "GITLAB_ACCESS_TOKEN",
-            "OAUTH_TOKEN",
-            "GLAB_TOKEN",
-        ] {
-            cmd.env_remove(key);
+        match kind {
+            CliKind::Glab => {
+                cmd.env("GLAB_CHECK_UPDATE", "false")
+                    .env("GLAB_NO_PROMPT", "true");
+                for key in [
+                    "GITLAB_TOKEN",
+                    "GITLAB_ACCESS_TOKEN",
+                    "OAUTH_TOKEN",
+                    "GLAB_TOKEN",
+                ] {
+                    cmd.env_remove(key);
+                }
+            }
+            CliKind::Gh => {
+                cmd.env("GH_PROMPT_DISABLED", "1")
+                    .env("GH_NO_UPDATE_NOTIFIER", "1")
+                    .env("GH_NO_EXTENSION_NOTIFIER", "1");
+                for key in [
+                    "GH_TOKEN",
+                    "GITHUB_TOKEN",
+                    "GH_ENTERPRISE_TOKEN",
+                    "GITHUB_ENTERPRISE_TOKEN",
+                    "GH_HOST",
+                ] {
+                    cmd.env_remove(key);
+                }
+            }
         }
 
         Ok(cmd)
     }
+}
+
+/// Build the `api` argument vector for a write call, shared by `glab` and
+/// `gh` because both take `--hostname`, `--method` and `--field` flags the
+/// same way.
+fn api_write_args(
+    path: &str,
+    host: &str,
+    method: &str,
+    fields: &[(&str, &str)],
+) -> Result<Vec<String>, RemoteError> {
+    let mut args = vec![
+        "api".to_string(),
+        path.to_string(),
+        "--hostname".to_string(),
+        host.to_string(),
+        "--method".to_string(),
+        method.to_string(),
+    ];
+    for (key, value) in fields {
+        // `@file` values are read from disk by both CLIs; refuse them outright.
+        if value.starts_with('@') {
+            return Err(RemoteError::StatusFailed(
+                "field values must not start with @".into(),
+            ));
+        }
+        args.push("--field".to_string());
+        args.push(format!("{key}={value}"));
+    }
+    Ok(args)
 }
 
 #[cfg(test)]
@@ -236,5 +339,49 @@ mod tests {
             err,
             RemoteError::StatusFailed(ref msg) if msg.contains("@")
         ));
+    }
+
+    #[tokio::test]
+    async fn github_api_write_rejects_at_file_fields() {
+        let svc = GitRemoteService::with_bins("/tmp", None, Some(PathBuf::from("/nonexistent-gh")));
+        let err = svc
+            .github_api_write(
+                1,
+                "github.com",
+                "PATCH",
+                "repos/o/r/pulls/1",
+                &[("state", "@/etc/passwd")],
+                Duration::from_secs(1),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            RemoteError::StatusFailed(ref msg) if msg.contains("@")
+        ));
+    }
+
+    #[test]
+    fn api_write_args_builds_method_and_fields() {
+        let args = api_write_args(
+            "repos/o/r/pulls/1",
+            "github.com",
+            "PATCH",
+            &[("state", "closed")],
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "api",
+                "repos/o/r/pulls/1",
+                "--hostname",
+                "github.com",
+                "--method",
+                "PATCH",
+                "--field",
+                "state=closed"
+            ]
+        );
     }
 }

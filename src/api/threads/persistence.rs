@@ -7,7 +7,7 @@ use axum::response::{IntoResponse, Response};
 
 use crate::api::map_err_internal;
 use crate::db::{MessageRow, NewMessage, ThreadRow};
-use crate::git::{first_gitlab_merge_request_url, parse_gitlab_remote_url, LinkedMergeRequest};
+use crate::git::{detect_remote, first_merge_request_url, LinkedMergeRequest};
 use crate::plan::Plan;
 use crate::providers::{
     collect_text, collect_thinking, strip_plan_markup_from_parts, title_from_prompt, MessagePart,
@@ -107,7 +107,7 @@ async fn auto_link_thread_merge_request(
     content: &str,
     run: &RunState,
 ) -> Option<(LinkedMergeRequest, String)> {
-    let linked = first_gitlab_merge_request_url(content)?;
+    let linked = first_merge_request_url(content)?;
     let project_id = thread.project_id?;
     let project = match state.db.get_project(project_id, user_id).await {
         Ok(Some(p)) => p,
@@ -135,9 +135,12 @@ async fn auto_link_thread_merge_request(
         }
     };
 
-    let remote = parse_gitlab_remote_url(&remote_url)?;
+    let (host, remote) = detect_remote(&remote_url)?;
 
-    if linked.hostname != remote.hostname || linked.project_path != remote.project_path {
+    if linked.provider != host
+        || linked.hostname != remote.hostname
+        || linked.project_path != remote.project_path
+    {
         tracing::debug!(
             linked_hostname = %linked.hostname,
             linked_project = %linked.project_path,

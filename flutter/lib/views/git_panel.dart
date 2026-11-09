@@ -313,7 +313,9 @@ class _GitPanelState extends State<GitPanel> {
             ),
           ),
         _historySection(context, state, model, l, theme),
-        if (model.remote != null && model.remote!.provider == 'gitlab') ...[
+        if (model.remote != null &&
+            (model.remote!.provider == 'gitlab' ||
+                model.remote!.provider == 'github')) ...[
           _mergeRequestsSection(context, state, model, l, theme),
           _issuesSection(context, state, model, l, theme),
         ],
@@ -958,7 +960,7 @@ class _GitPanelState extends State<GitPanel> {
     );
   }
 
-  /// The repo's open merge requests on its GitLab remote. Tapping a row
+  /// The repo's open merge/pull requests on its git host. Tapping a row
   /// opens the existing merge request dialog via [AppState.openLink].
   Widget _mergeRequestsSection(
     BuildContext context,
@@ -984,7 +986,7 @@ class _GitPanelState extends State<GitPanel> {
                 ),
                 Expanded(
                   child: Text(
-                    '${l.mergeRequests} (${model.mergeRequests.length})'
+                    '${model.remote!.provider == 'github' ? l.pullRequests : l.mergeRequests} (${model.mergeRequests.length})'
                         .toUpperCase(),
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w600,
@@ -1021,7 +1023,9 @@ class _GitPanelState extends State<GitPanel> {
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
               child: Text(
-                l.noMergeRequests,
+                model.remote!.provider == 'github'
+                    ? l.noPullRequests
+                    : l.noMergeRequests,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -1049,7 +1053,7 @@ class _GitPanelState extends State<GitPanel> {
             Row(
               children: [
                 Text(
-                  '!${mr.iid}',
+                  '${mr.refMarker}${mr.iid}',
                   style: theme.textTheme.labelSmall?.copyWith(
                     fontFamily: 'monospace',
                     color: theme.colorScheme.primary,

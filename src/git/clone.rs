@@ -75,6 +75,7 @@ pub struct ParsedRemote {
     pub repo: String,
     pub platform: String,
     pub is_gitlab: bool,
+    pub is_github: bool,
 }
 
 /// Clone [remote_url] into the configured clone root and create a project row.
@@ -257,6 +258,7 @@ pub(crate) fn parse_remote_url(url: &str) -> Result<ParsedRemote, CloneError> {
     let host = host_without_port(&host_with_port)?;
     let platform = platform_for_host(&host);
     let is_gitlab = platform == "gitlab";
+    let is_github = crate::git::is_github_hostname(&host);
 
     let project_path = raw_project_path.trim_matches('/');
     let segments: Vec<&str> = project_path.split('/').filter(|s| !s.is_empty()).collect();
@@ -287,6 +289,7 @@ pub(crate) fn parse_remote_url(url: &str) -> Result<ParsedRemote, CloneError> {
         repo,
         platform,
         is_gitlab,
+        is_github,
     })
 }
 
@@ -422,10 +425,11 @@ fn decode_and_validate_segment(s: &str) -> Result<String, CloneError> {
     Ok(decoded)
 }
 
-/// Build the `Authorization` header for a private GitLab clone over HTTPS.
+/// Build the `Authorization` header for a private GitLab/GitHub clone over
+/// HTTPS.
 ///
-/// The token is read from the operator's `glab` config, so only the owner
-/// may borrow that identity; everyone else clones anonymously. Non-HTTPS
+/// The token is read from the operator's `glab`/`gh` config, so only the
+/// owner may borrow that identity; everyone else clones anonymously. Non-HTTPS
 /// remotes get no header.
 async fn clone_auth(
     git_remote: &GitRemoteService,
@@ -433,22 +437,36 @@ async fn clone_auth(
     is_owner: bool,
     parsed: &ParsedRemote,
 ) -> Option<String> {
-    if !is_owner || !parsed.is_gitlab || !parsed.clean_url.starts_with("https://") {
+    if !is_owner
+        || !(parsed.is_gitlab || parsed.is_github)
+        || !parsed.clean_url.starts_with("https://")
+    {
         return None;
     }
-    let token = match git_remote
-        .gitlab_token_for_host(user_id, &parsed.host)
-        .await
-    {
+    let token = if parsed.is_github {
+        git_remote
+            .github_token_for_host(user_id, &parsed.host)
+            .await
+    } else {
+        git_remote
+            .gitlab_token_for_host(user_id, &parsed.host)
+            .await
+    };
+    let token = match token {
         Ok(Some(token)) => token,
         Ok(None) => return None,
         Err(e) => {
-            tracing::warn!(error = %e, "failed to get gitlab token; using plain clone");
+            tracing::warn!(error = %e, "failed to get git host token; using plain clone");
             return None;
         }
     };
     use base64::Engine;
-    let basic = base64::engine::general_purpose::STANDARD.encode(format!("oauth2:{token}"));
+    let user = if parsed.is_github {
+        "x-access-token"
+    } else {
+        "oauth2"
+    };
+    let basic = base64::engine::general_purpose::STANDARD.encode(format!("{user}:{token}"));
     Some(format!("Authorization: Basic {basic}"))
 }
 

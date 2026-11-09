@@ -53,14 +53,16 @@ mixin DialogStore on AppStateBase {
   }
   @override
   Future<void> openLink(String url) async {
-    if (GitLabMergeRequestProvider.canHandleUrl(url)) {
+    if (GitLabMergeRequestProvider.canHandleUrl(url) ||
+        GitHubMergeRequestProvider.canHandleUrl(url)) {
       _mergeRequestUrl = url;
       _dialog = DialogKind.mergeRequest;
       _userMenuOpen = false;
       notifyListeners();
       return;
     }
-    if (GitLabIssueProvider.canHandleUrl(url)) {
+    if (GitLabIssueProvider.canHandleUrl(url) ||
+        GitHubIssueProvider.canHandleUrl(url)) {
       _issueUrl = url;
       _dialog = DialogKind.issue;
       _userMenuOpen = false;

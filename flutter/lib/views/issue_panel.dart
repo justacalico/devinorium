@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../issue/github_issue_provider.dart';
 import '../issue/gitlab_issue_provider.dart';
 import '../issue/issue_provider.dart';
 import '../l10n/l10n.dart';
@@ -27,8 +28,11 @@ class _IssuePanelState extends State<IssuePanel> {
   @override
   void initState() {
     super.initState();
-    _provider =
-        widget.provider ?? GitLabIssueProvider(context.read<AppState>().api.client);
+    final client = context.read<AppState>().api.client;
+    _provider = widget.provider ??
+        (GitHubIssueProvider.canHandleUrl(widget.url)
+            ? GitHubIssueProvider(client)
+            : GitLabIssueProvider(client));
     _provider.load(widget.url);
   }
 

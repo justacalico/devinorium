@@ -15,15 +15,22 @@ class _GitSectionState extends State<_GitSection> {
   static const _gitlabId = 'gitlab';
   static const _githubId = 'github';
 
-  Future<void> _connect() async {
+  Future<void> _connect(GitConnection connection) async {
     setState(() => _busy = true);
-    await widget.state.connectGitLab();
+    if (connection.id == _githubId) {
+      await widget.state.connectGitHub();
+    } else {
+      await widget.state.connectGitLab();
+    }
     if (mounted) {
       setState(() => _busy = false);
       if (widget.state.globalError.isNotEmpty) {
+        final l = l10n(context);
         showAppMessage(
           context,
-          l10n(context).gitlabConnectFailed(widget.state.globalError),
+          connection.id == _githubId
+              ? l.githubConnectFailed(widget.state.globalError)
+              : l.gitlabConnectFailed(widget.state.globalError),
           kind: MessageKind.error,
         );
       }
@@ -32,13 +39,20 @@ class _GitSectionState extends State<_GitSection> {
 
   Future<void> _disconnect(GitConnection connection) async {
     setState(() => _busy = true);
-    await widget.state.disconnectGitLab(hostname: connection.host);
+    if (connection.id == _githubId) {
+      await widget.state.disconnectGitHub(hostname: connection.host);
+    } else {
+      await widget.state.disconnectGitLab(hostname: connection.host);
+    }
     if (mounted) {
       setState(() => _busy = false);
       if (widget.state.globalError.isNotEmpty) {
+        final l = l10n(context);
         showAppMessage(
           context,
-          l10n(context).gitlabDisconnectFailed(widget.state.globalError),
+          connection.id == _githubId
+              ? l.githubDisconnectFailed(widget.state.globalError)
+              : l.gitlabDisconnectFailed(widget.state.globalError),
           kind: MessageKind.error,
         );
       }
@@ -152,7 +166,7 @@ class _GitSectionState extends State<_GitSection> {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : FilledButton(
-              onPressed: _connect,
+              onPressed: () => _connect(conn),
               child: Text(l.connect),
             ),
     );
@@ -164,15 +178,53 @@ class _GitSectionState extends State<_GitSection> {
     AppLocalizations l,
     GitConnection conn,
   ) {
+    final status = conn.authed
+        ? (conn.host != null
+            ? '${l.connectedAs(conn.account ?? '')} (${conn.host})'
+            : l.connectedAs(conn.account ?? ''))
+        : l.notConnected;
+
+    if (!conn.enabled) {
+      return GitProviderTile(
+        icon: GitHubIcon(color: theme.colorScheme.onSurfaceVariant),
+        title: l.github,
+        subtitle: l.githubNotInstalled,
+      );
+    }
+
+    if (conn.authed) {
+      return GitProviderTile(
+        icon: const GitHubIcon(),
+        title: l.github,
+        subtitle: status,
+        subtitleColor: theme.colorScheme.primary,
+        trailing: _busy
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : OutlinedButton(
+                onPressed: () => _disconnect(conn),
+                child: Text(l.disconnect),
+              ),
+      );
+    }
+
     return GitProviderTile(
-      opacity: 0.55,
-      icon: GitHubIcon(color: theme.colorScheme.onSurface),
+      icon: const GitHubIcon(),
       title: l.github,
-      subtitle: l.comingSoon,
-      trailing: Chip(
-        label: Text(l.comingSoon),
-        visualDensity: VisualDensity.compact,
-      ),
+      subtitle: l.githubConnectHint,
+      trailing: _busy
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : FilledButton(
+              onPressed: () => _connect(conn),
+              child: Text(l.connect),
+            ),
     );
   }
 
