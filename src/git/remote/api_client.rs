@@ -250,7 +250,9 @@ impl GitRemoteService {
                 "LOGNAME",
                 std::env::var("LOGNAME").unwrap_or_else(|_| user_id.to_string()),
             )
-            .env("PATH", std::env::var("PATH").unwrap_or_default());
+            .env("PATH", std::env::var("PATH").unwrap_or_default())
+            .env_remove("GLAB_CONFIG_DIR")
+            .env_remove("GH_CONFIG_DIR");
 
         match kind {
             CliKind::Glab => {

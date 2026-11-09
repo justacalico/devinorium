@@ -302,7 +302,9 @@ class LinkedMergeRequestRef {
     }
     final segs = uri.pathSegments;
 
-    final pullIdx = segs.indexOf('pull');
+    // The last `pull` segment wins so an owner or repo literally named
+    // `pull` (github.com/pull/pull/pull/5) still resolves correctly.
+    final pullIdx = segs.lastIndexOf('pull');
     if (pullIdx == 2 && segs.length > 3) {
       final iid = int.tryParse(segs[3]);
       if (iid != null && iid > 0) {

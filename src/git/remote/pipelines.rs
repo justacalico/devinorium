@@ -330,9 +330,18 @@ impl GitRemoteService {
     }
 }
 
+/// Whether a CLI error means the job log does not exist yet. `glab` writes
+/// `404 ...` to stderr while `gh` reports `Not Found (HTTP 404)` and prints
+/// the `{"status":"404"}` JSON body to stdout.
 fn is_trace_not_found(msg: &str) -> bool {
-    let first = msg.trim().lines().next().unwrap_or(msg.trim());
-    first.starts_with("404 ") || first.contains(": 404 ") || first.contains(" 404 ")
+    msg.lines().map(str::trim).any(|line| {
+        line.starts_with("404 ")
+            || line.contains(": 404 ")
+            || line.contains(" 404 ")
+            || line.contains("HTTP 404")
+            || line.contains("\"status\":\"404\"")
+            || line.contains("\"status\": \"404\"")
+    })
 }
 
 fn parse_timestamp(s: &str) -> DateTime<Utc> {

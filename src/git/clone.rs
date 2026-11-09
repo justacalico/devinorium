@@ -206,8 +206,13 @@ pub async fn clone_repo(
 
     if authed {
         // Future fetch/pull/push need credentials too. Point the repo at
-        // glab's credential helper so the token is never stored in
+        // the host CLI's credential helper so the token is never stored in
         // .git/config, only the helper command is.
+        let helper = if parsed.is_github {
+            "!gh auth git-credential"
+        } else {
+            "!glab auth git-credential"
+        };
         let mut cfg = Command::new(git_bin);
         cfg.current_dir(&resolved_target)
             .env("LC_ALL", "C")
@@ -219,7 +224,7 @@ pub async fn clone_repo(
                 "credential.https://{}/.helper",
                 parsed.host_with_port
             ))
-            .arg("!glab auth git-credential");
+            .arg(helper);
         let _ = cfg.output().await;
     }
 
@@ -556,10 +561,11 @@ pub(crate) async fn run_git_clone(cmd: &mut Command, max: Duration) -> Result<()
 }
 
 fn redact_token(s: &str) -> String {
-    // Redact GitLab oauth2 tokens from error messages so they do not leak
+    // Redact embedded credentials in remote URLs (oauth2:, x-access-token:,
+    // personal access tokens, ...) from error messages so they do not leak
     // back to the UI or tracing in plain text.
-    let re = regex::Regex::new(r"oauth2:[^@\s]+@").unwrap();
-    re.replace_all(s, "oauth2:***@").to_string()
+    let re = regex::Regex::new(r"([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\s:]+:[^/@\s]+@").unwrap();
+    re.replace_all(s, "$1***:***@").to_string()
 }
 
 #[cfg(test)]
@@ -636,7 +642,7 @@ mod tests {
     fn redacts_token() {
         assert_eq!(
             redact_token("fatal: https://oauth2:abc123@gitlab.com/foo"),
-            "fatal: https://oauth2:***@gitlab.com/foo"
+            "fatal: https://***:***@gitlab.com/foo"
         );
     }
 

@@ -213,9 +213,15 @@ impl GitService {
             {
                 continue;
             }
-            let cli = if crate::git::is_github_hostname(
-                base.trim_start_matches("https://").trim_end_matches('/'),
-            ) {
+            let cli_host = base
+                .split("://")
+                .nth(1)
+                .unwrap_or(base.as_str())
+                .split(':')
+                .next()
+                .unwrap_or("")
+                .trim_end_matches('/');
+            let cli = if crate::git::is_github_hostname(cli_host) {
                 "gh"
             } else {
                 "glab"

@@ -371,9 +371,13 @@ impl GitRemoteService {
         }
 
         // `gh auth status` with no credentials at all prints a sentence
-        // rather than a host section.
+        // rather than a host section; an unknown `--hostname` produces a
+        // "not found" message instead.
         let lower = output.to_lowercase();
-        if lower.contains("not logged") || lower.contains("no github hosts") {
+        if lower.contains("not logged")
+            || lower.contains("no github hosts")
+            || lower.contains("not found")
+        {
             return Ok(GitHostStatus {
                 host: fallback_host.to_string(),
                 authed: false,

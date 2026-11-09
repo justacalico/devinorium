@@ -152,26 +152,26 @@ pub fn parse_gitlab_merge_request_url(url: &str) -> Option<LinkedMergeRequest> {
 
 /// Parse a GitHub pull request URL into a linked merge request reference.
 ///
-/// Only GitHub hosts are accepted (`github.com`, `*.ghe.com`,
-/// `*.ghe.localhost`). The path must contain the `/pull/` marker; the two
-/// segments before it are the owner and repository, and the following path
-/// segment is the pull request number.
+/// Any host is accepted so self-hosted GitHub Enterprise domains work; the
+/// `/pull/` path marker is GitHub-specific and callers still verify the
+/// resolved provider against the project's remote. The two segments before
+/// the marker are the owner and repository, and the following path segment
+/// is the pull request number.
 ///
 ///   https://github.com/owner/repo/pull/12
 ///   https://github.com/owner/repo/pull/12/files
 pub fn parse_github_pull_request_url(url: &str) -> Option<LinkedMergeRequest> {
     let (scheme, host_port, hostname, raw_path) = split_web_url(url)?;
-    if !is_github_hostname(&hostname) {
-        return None;
-    }
 
     let path = raw_path.split(['?', '#']).next().unwrap_or(&raw_path);
     if path.is_empty() {
         return None;
     }
 
+    // The last `/pull/` wins so an owner or repo literally named `pull`
+    // (github.com/pull/pull/pull/5) still resolves correctly.
     let pr_marker = "/pull/";
-    let marker_idx = path.find(pr_marker)?;
+    let marker_idx = path.rfind(pr_marker)?;
     let project_path = &path[..marker_idx];
     let after_marker = &path[marker_idx + pr_marker.len()..];
 
@@ -429,7 +429,7 @@ fn check_decoded_path(decoded: &str) -> Result<(), RemoteError> {
     let has_traversal = decoded
         .split(['/', '?', '#'])
         .any(|segment| segment == "..");
-    if has_traversal || decoded.contains('\n') || decoded.contains('\r') {
+    if has_traversal || decoded.contains('\n') || decoded.contains('\r') || decoded.contains('\0') {
         return Err(RemoteError::StatusFailed(
             "invalid characters in api path".into(),
         ));
@@ -751,8 +751,11 @@ mod tests {
 
     #[test]
     fn parse_github_pull_request_url_rejects_non_github_and_invalid() {
-        // GitLab-shaped or non-GitHub hosts are not pull requests.
-        assert!(parse_github_pull_request_url("https://gitlab.example.com/o/r/pull/12").is_none());
+        // Any host is accepted so GitHub Enterprise domains work; the
+        // provider check happens when the link is resolved.
+        let r = parse_github_pull_request_url("https://git.acme.corp/o/r/pull/12").unwrap();
+        assert_eq!(r.provider, GitHost::GitHub);
+        assert_eq!(r.hostname, "git.acme.corp");
         assert!(parse_github_pull_request_url(
             "https://gitlab.com/group/project/-/merge_requests/12"
         )

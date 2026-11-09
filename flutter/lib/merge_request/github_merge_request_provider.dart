@@ -226,23 +226,33 @@ class GitHubMergeRequestProvider extends MergeRequestProvider {
         ref,
         'repos/${_encodePath(ref.projectPath)}/issues/${ref.iid}/comments?per_page=100',
       ),
+      // Inline review comments live on a separate endpoint from the
+      // conversation comments.
+      _proxyOrEmpty(ref, '$prPath/comments?per_page=100'),
       _pipelines(ref).catchError((_) => <String, dynamic>{'_list': <dynamic>[]}),
     ];
 
     final results = await Future.wait(futures);
     final files = results[0];
     final commentsJson = results[1];
-    final pipelineJson = results[2];
+    final reviewJson = results[2];
+    final pipelineJson = results[3];
 
     final changes = (files['_list'] as List<dynamic>? ?? [])
         .whereType<Map<String, dynamic>>()
         .map(_changeFromFile)
         .toList();
 
-    final comments = (commentsJson['_list'] as List<dynamic>? ?? [])
+    final comments = [
+      ...(commentsJson['_list'] as List<dynamic>? ?? []),
+      ...(reviewJson['_list'] as List<dynamic>? ?? []),
+    ]
         .whereType<Map<String, dynamic>>()
         .map(_commentFromJson)
-        .toList();
+        .toList()
+      ..sort(
+        (a, b) => (a.createdAt).compareTo(b.createdAt),
+      );
 
     final pipelineList = pipelineJson['_list'] as List<dynamic>? ?? [];
     final pipelines = pipelineList
