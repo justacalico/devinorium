@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.114.0 - 2026-11-09
+#### Features
+- add GitHub support to git host connections - (e99288c) - HttpAnimations
+#### Bug Fixes
+- address review issues in GitHub remote handling - (bf12a26) - HttpAnimations
+- 远程服务器激活时也重启崩溃的内置服务器 - (b2af262) - HttpAnimations
+
+- - -
+
 ## v0.113.0 - 2026-11-03
 #### Features
 - 会话菜单新增分享与取消分享 - (636efb9) - HttpAnimations
