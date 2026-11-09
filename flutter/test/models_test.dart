@@ -1694,6 +1694,19 @@ void main() {
       expect(mr.iid, 7);
       expect(mr.webUrl, ref.webUrl);
     });
+
+    test('keeps the provider when building from a reference', () {
+      final ref = LinkedMergeRequestRef.tryParse(
+        'https://github.com/o/r/pull/7',
+      )!;
+      final mr = MergeRequestLink.fromRef(ref);
+      expect(mr.provider, 'github');
+      expect(mr.refMarker, '#');
+
+      final gl = MergeRequestLink.fromJson({'iid': 1});
+      expect(gl.provider, 'gitlab');
+      expect(gl.refMarker, '!');
+    });
   });
 
   group('LinkedMergeRequestRef', () {
@@ -1760,6 +1773,56 @@ void main() {
       expect(ref.hostname, 'gitlab.example.com');
       expect(ref.projectPath, 'group/project');
       expect(ref.iid, 12);
+    });
+
+    test('parses a GitHub pull request URL', () {
+      final ref = LinkedMergeRequestRef.tryParse(
+        'https://github.com/owner/repo/pull/12',
+      );
+      expect(ref, isNotNull);
+      expect(ref!.provider, 'github');
+      expect(ref.hostname, 'github.com');
+      expect(ref.projectPath, 'owner/repo');
+      expect(ref.iid, 12);
+    });
+
+    test('parses a GitHub Enterprise pull request URL', () {
+      final ref = LinkedMergeRequestRef.tryParse(
+        'https://corp.ghe.com/o/r/pull/7/files',
+      )!;
+      expect(ref.provider, 'github');
+      expect(ref.hostname, 'corp.ghe.com');
+      expect(ref.projectPath, 'o/r');
+      expect(ref.iid, 7);
+    });
+
+    test('rejects invalid pull request URLs', () {
+      expect(
+        LinkedMergeRequestRef.tryParse('https://github.com/o/r/pull'),
+        isNull,
+      );
+      expect(
+        LinkedMergeRequestRef.tryParse('https://github.com/o/r/pull/abc'),
+        isNull,
+      );
+      expect(
+        LinkedMergeRequestRef.tryParse('https://github.com/a/pull/1'),
+        isNull,
+      );
+      expect(
+        LinkedMergeRequestRef.tryParse('https://github.com/a/b/c/pull/1'),
+        isNull,
+      );
+    });
+
+    test('defaults provider to gitlab for older payloads', () {
+      final ref = LinkedMergeRequestRef.fromJson({
+        'hostname': 'gitlab.com',
+        'project_path': 'g/p',
+        'iid': 4,
+        'web_url': 'https://gitlab.com/g/p/-/merge_requests/4',
+      });
+      expect(ref.provider, 'gitlab');
     });
   });
 

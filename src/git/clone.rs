@@ -75,6 +75,7 @@ pub struct ParsedRemote {
     pub repo: String,
     pub platform: String,
     pub is_gitlab: bool,
+    pub is_github: bool,
 }
 
 /// Clone [remote_url] into the configured clone root and create a project row.
@@ -205,8 +206,13 @@ pub async fn clone_repo(
 
     if authed {
         // Future fetch/pull/push need credentials too. Point the repo at
-        // glab's credential helper so the token is never stored in
+        // the host CLI's credential helper so the token is never stored in
         // .git/config, only the helper command is.
+        let helper = if parsed.is_github {
+            "!gh auth git-credential"
+        } else {
+            "!glab auth git-credential"
+        };
         let mut cfg = Command::new(git_bin);
         cfg.current_dir(&resolved_target)
             .env("LC_ALL", "C")
@@ -218,7 +224,7 @@ pub async fn clone_repo(
                 "credential.https://{}/.helper",
                 parsed.host_with_port
             ))
-            .arg("!glab auth git-credential");
+            .arg(helper);
         let _ = cfg.output().await;
     }
 
@@ -257,6 +263,7 @@ pub(crate) fn parse_remote_url(url: &str) -> Result<ParsedRemote, CloneError> {
     let host = host_without_port(&host_with_port)?;
     let platform = platform_for_host(&host);
     let is_gitlab = platform == "gitlab";
+    let is_github = crate::git::is_github_hostname(&host);
 
     let project_path = raw_project_path.trim_matches('/');
     let segments: Vec<&str> = project_path.split('/').filter(|s| !s.is_empty()).collect();
@@ -287,6 +294,7 @@ pub(crate) fn parse_remote_url(url: &str) -> Result<ParsedRemote, CloneError> {
         repo,
         platform,
         is_gitlab,
+        is_github,
     })
 }
 
@@ -422,10 +430,11 @@ fn decode_and_validate_segment(s: &str) -> Result<String, CloneError> {
     Ok(decoded)
 }
 
-/// Build the `Authorization` header for a private GitLab clone over HTTPS.
+/// Build the `Authorization` header for a private GitLab/GitHub clone over
+/// HTTPS.
 ///
-/// The token is read from the operator's `glab` config, so only the owner
-/// may borrow that identity; everyone else clones anonymously. Non-HTTPS
+/// The token is read from the operator's `glab`/`gh` config, so only the
+/// owner may borrow that identity; everyone else clones anonymously. Non-HTTPS
 /// remotes get no header.
 async fn clone_auth(
     git_remote: &GitRemoteService,
@@ -433,22 +442,36 @@ async fn clone_auth(
     is_owner: bool,
     parsed: &ParsedRemote,
 ) -> Option<String> {
-    if !is_owner || !parsed.is_gitlab || !parsed.clean_url.starts_with("https://") {
+    if !is_owner
+        || !(parsed.is_gitlab || parsed.is_github)
+        || !parsed.clean_url.starts_with("https://")
+    {
         return None;
     }
-    let token = match git_remote
-        .gitlab_token_for_host(user_id, &parsed.host)
-        .await
-    {
+    let token = if parsed.is_github {
+        git_remote
+            .github_token_for_host(user_id, &parsed.host)
+            .await
+    } else {
+        git_remote
+            .gitlab_token_for_host(user_id, &parsed.host)
+            .await
+    };
+    let token = match token {
         Ok(Some(token)) => token,
         Ok(None) => return None,
         Err(e) => {
-            tracing::warn!(error = %e, "failed to get gitlab token; using plain clone");
+            tracing::warn!(error = %e, "failed to get git host token; using plain clone");
             return None;
         }
     };
     use base64::Engine;
-    let basic = base64::engine::general_purpose::STANDARD.encode(format!("oauth2:{token}"));
+    let user = if parsed.is_github {
+        "x-access-token"
+    } else {
+        "oauth2"
+    };
+    let basic = base64::engine::general_purpose::STANDARD.encode(format!("{user}:{token}"));
     Some(format!("Authorization: Basic {basic}"))
 }
 
@@ -538,10 +561,11 @@ pub(crate) async fn run_git_clone(cmd: &mut Command, max: Duration) -> Result<()
 }
 
 fn redact_token(s: &str) -> String {
-    // Redact GitLab oauth2 tokens from error messages so they do not leak
+    // Redact embedded credentials in remote URLs (oauth2:, x-access-token:,
+    // personal access tokens, ...) from error messages so they do not leak
     // back to the UI or tracing in plain text.
-    let re = regex::Regex::new(r"oauth2:[^@\s]+@").unwrap();
-    re.replace_all(s, "oauth2:***@").to_string()
+    let re = regex::Regex::new(r"([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\s:]+:[^/@\s]+@").unwrap();
+    re.replace_all(s, "$1***:***@").to_string()
 }
 
 #[cfg(test)]
@@ -618,7 +642,7 @@ mod tests {
     fn redacts_token() {
         assert_eq!(
             redact_token("fatal: https://oauth2:abc123@gitlab.com/foo"),
-            "fatal: https://oauth2:***@gitlab.com/foo"
+            "fatal: https://***:***@gitlab.com/foo"
         );
     }
 

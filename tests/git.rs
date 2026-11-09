@@ -662,6 +662,70 @@ exit 1
     bin
 }
 
+fn write_fake_gh(dir: &Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("gh");
+    let script = r#"#!/bin/sh
+set -e
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  host="github.com"
+  if [ "$3" = "--hostname" ]; then
+    host="$4"
+  fi
+  if [ -f "$XDG_CONFIG_HOME/token" ] && [ -s "$XDG_CONFIG_HOME/token" ]; then
+    echo "$host"
+    echo "  Logged in to $host account testuser"
+    echo "  - Active account: true"
+    exit 0
+  else
+    echo "$host"
+    echo "  x Not logged in to $host"
+    exit 1
+  fi
+fi
+if [ "$1" = "auth" ] && [ "$2" = "token" ]; then
+  if [ -f "$XDG_CONFIG_HOME/token" ] && [ -s "$XDG_CONFIG_HOME/token" ]; then
+    cat "$XDG_CONFIG_HOME/token"
+    exit 0
+  fi
+  echo "no token" >&2
+  exit 1
+fi
+if [ "$1" = "auth" ] && [ "$2" = "logout" ]; then
+  rm -f "$XDG_CONFIG_HOME/token"
+  echo "Logged out of github.com"
+  exit 0
+fi
+if [ "$1" = "api" ]; then
+  path="$2"
+  host="github.com"
+  if [ "$3" = "--hostname" ]; then
+    host="$4"
+  fi
+  printf '{"host":"%s","path":"%s"}\n' "$host" "$path"
+  exit 0
+fi
+echo "unknown gh command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+fn write_gh_token_file(config_root: &Path, user_id: i64) {
+    let token_file = config_root
+        .join("gh")
+        .join(user_id.to_string())
+        .join(".config")
+        .join("token");
+    std::fs::create_dir_all(token_file.parent().unwrap()).unwrap();
+    std::fs::write(&token_file, "gho-test-token").unwrap();
+}
+
 #[tokio::test]
 async fn git_remote_connection_list_reflects_glab_status() {
     let tmp = TempDir::new().unwrap();
@@ -675,7 +739,8 @@ async fn git_remote_connection_list_reflects_glab_status() {
     assert_eq!(list[0].id, "gitlab");
     assert!(!list[0].authed);
     assert_eq!(list[1].id, "github");
-    assert!(list[1].coming_soon);
+    assert!(!list[1].enabled);
+    assert!(!list[1].coming_soon);
 }
 
 #[tokio::test]
@@ -1403,27 +1468,25 @@ async fn git_remote_gitlab_status_fails_on_unparseable_output() {
 }
 
 #[test]
-fn parse_gitlab_remote_url_handles_scp_style() {
-    let r = devinorium::git::parse_gitlab_remote_url("git@gitlab.com:group/project.git").unwrap();
+fn parse_git_remote_url_handles_scp_style() {
+    let r = devinorium::git::parse_git_remote_url("git@gitlab.com:group/project.git").unwrap();
     assert_eq!(r.hostname, "gitlab.com");
     assert_eq!(r.project_path, "group/project");
 
-    let r = devinorium::git::parse_gitlab_remote_url(
-        "git@gitlab.example.com:group/subgroup/project.git",
-    )
-    .unwrap();
+    let r =
+        devinorium::git::parse_git_remote_url("git@gitlab.example.com:group/subgroup/project.git")
+            .unwrap();
     assert_eq!(r.hostname, "gitlab.example.com");
     assert_eq!(r.project_path, "group/subgroup/project");
 }
 
 #[test]
-fn parse_gitlab_remote_url_handles_https() {
-    let r =
-        devinorium::git::parse_gitlab_remote_url("https://gitlab.com/group/project.git").unwrap();
+fn parse_git_remote_url_handles_https() {
+    let r = devinorium::git::parse_git_remote_url("https://gitlab.com/group/project.git").unwrap();
     assert_eq!(r.hostname, "gitlab.com");
     assert_eq!(r.project_path, "group/project");
 
-    let r = devinorium::git::parse_gitlab_remote_url(
+    let r = devinorium::git::parse_git_remote_url(
         "https://user:token@gitlab.example.com/group/subgroup/project.git",
     )
     .unwrap();
@@ -1432,27 +1495,27 @@ fn parse_gitlab_remote_url_handles_https() {
 }
 
 #[test]
-fn parse_gitlab_remote_url_handles_ssh_scheme_with_port() {
-    let r = devinorium::git::parse_gitlab_remote_url("ssh://git@gitlab.com:22/group/project.git")
-        .unwrap();
+fn parse_git_remote_url_handles_ssh_scheme_with_port() {
+    let r =
+        devinorium::git::parse_git_remote_url("ssh://git@gitlab.com:22/group/project.git").unwrap();
     assert_eq!(r.hostname, "gitlab.com");
     assert_eq!(r.project_path, "group/project");
 }
 
 #[test]
-fn parse_gitlab_remote_url_strips_trailing_dot_git_and_slash() {
-    let r = devinorium::git::parse_gitlab_remote_url("https://gitlab.com/group/project/").unwrap();
+fn parse_git_remote_url_strips_trailing_dot_git_and_slash() {
+    let r = devinorium::git::parse_git_remote_url("https://gitlab.com/group/project/").unwrap();
     assert_eq!(r.project_path, "group/project");
 }
 
 #[test]
-fn parse_gitlab_remote_url_rejects_garbage() {
-    assert!(devinorium::git::parse_gitlab_remote_url("").is_none());
-    assert!(devinorium::git::parse_gitlab_remote_url("not a url").is_none());
-    assert!(devinorium::git::parse_gitlab_remote_url("https://gitlab.com/").is_none());
+fn parse_git_remote_url_rejects_garbage() {
+    assert!(devinorium::git::parse_git_remote_url("").is_none());
+    assert!(devinorium::git::parse_git_remote_url("not a url").is_none());
+    assert!(devinorium::git::parse_git_remote_url("https://gitlab.com/").is_none());
     // Non-gitlab hostnames still parse; the caller decides whether the host
     // is acceptable. But a path with traversal is rejected.
-    assert!(devinorium::git::parse_gitlab_remote_url("https://gitlab.com/../project").is_none());
+    assert!(devinorium::git::parse_git_remote_url("https://gitlab.com/../project").is_none());
 }
 
 #[tokio::test]
@@ -1895,4 +1958,193 @@ async fn stage_all_skips_repo_nested_in_untracked_dir() {
     // vendor/repo must stay untracked, not staged as a gitlink.
     assert!(!out.contains("A  vendor"), "{out}");
     assert!(out.contains("?? vendor/"), "{out}");
+}
+
+#[tokio::test]
+async fn git_remote_github_login_and_logout() {
+    let tmp = TempDir::new().unwrap();
+    let gh = write_fake_gh(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_bins(config_root.clone(), None, Some(gh));
+
+    write_gh_token_file(&config_root, 1);
+
+    let status = svc.login_github(1, None).await.unwrap();
+    assert!(status.authed);
+    assert_eq!(status.account.as_deref(), Some("testuser"));
+    assert_eq!(status.host, "github.com");
+
+    svc.logout_github(1, None).await.unwrap();
+    let status = svc.github_status(1).await.unwrap();
+    assert!(!status.authed);
+}
+
+#[tokio::test]
+async fn git_remote_github_login_fails_without_auth() {
+    let tmp = TempDir::new().unwrap();
+    let gh = write_fake_gh(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_bins(config_root, None, Some(gh));
+
+    let err = svc.login_github(1, None).await.unwrap_err();
+    assert!(matches!(err, devinorium::git::RemoteError::LoginFailed(_)));
+}
+
+#[tokio::test]
+async fn git_remote_github_status_uninstalled() {
+    let tmp = TempDir::new().unwrap();
+    let svc = GitRemoteService::with_bins(tmp.path(), None, None);
+    let err = svc.github_status(1).await.unwrap_err();
+    assert!(matches!(
+        err,
+        devinorium::git::RemoteError::GitHubNotAvailable
+    ));
+}
+
+#[tokio::test]
+async fn git_remote_github_token_for_host() {
+    let tmp = TempDir::new().unwrap();
+    let gh = write_fake_gh(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_bins(config_root.clone(), None, Some(gh));
+
+    assert!(svc
+        .github_token_for_host(1, "github.com")
+        .await
+        .unwrap()
+        .is_none());
+
+    write_gh_token_file(&config_root, 1);
+    let token = svc
+        .github_token_for_host(1, "github.com")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(token, "gho-test-token");
+}
+
+#[tokio::test]
+async fn git_remote_connections_reports_github_when_installed() {
+    let tmp = TempDir::new().unwrap();
+    let gh = write_fake_gh(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_bins(config_root.clone(), None, Some(gh));
+
+    write_gh_token_file(&config_root, 1);
+    let list = svc.connections(1).await;
+    let github = list.iter().find(|c| c.id == "github").unwrap();
+    assert!(github.enabled);
+    assert!(github.authed);
+    assert_eq!(github.account.as_deref(), Some("testuser"));
+    assert!(!github.coming_soon);
+}
+
+#[tokio::test]
+async fn git_remote_github_api_proxies_and_defaults_host() {
+    let tmp = TempDir::new().unwrap();
+    let gh = write_fake_gh(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_bins(config_root, None, Some(gh));
+
+    let out = svc
+        .github_api(1, "", "repos/owner/repo/pulls/1")
+        .await
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["host"], "github.com");
+    assert_eq!(v["path"], "repos/owner/repo/pulls/1");
+
+    let err = svc.github_api(1, "", "projects/foo").await.unwrap_err();
+    assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
+}
+
+#[tokio::test]
+async fn git_remote_github_issues_filters_pull_requests() {
+    let tmp = TempDir::new().unwrap();
+    let bin_dir = tmp.path().join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let gh = bin_dir.join("gh");
+    let script = r#"#!/bin/sh
+set -e
+if [ "$1" = "api" ]; then
+  printf '[{"number":1,"title":"bug","state":"open","html_url":"https://github.com/o/r/issues/1","labels":[{"name":"bug"}]},{"number":2,"title":"a pr","state":"open","html_url":"https://github.com/o/r/pull/2","pull_request":{}}]\n'
+  exit 0
+fi
+exit 1
+"#;
+    std::fs::write(&gh, script).unwrap();
+    let mut perms = std::fs::metadata(&gh).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&gh, perms).unwrap();
+
+    let svc = GitRemoteService::with_bins(tmp.path(), None, Some(gh));
+    let issues = svc.github_issues(1, "", "o/r", 10).await.unwrap();
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0].iid, 1);
+    assert_eq!(issues[0].labels, vec!["bug"]);
+}
+
+#[tokio::test]
+async fn git_remote_github_pull_requests_parses_list() {
+    let tmp = TempDir::new().unwrap();
+    let bin_dir = tmp.path().join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let gh = bin_dir.join("gh");
+    let script = r#"#!/bin/sh
+set -e
+if [ "$1" = "api" ]; then
+  case "$2" in
+    *"/pulls/7/merge"*)
+      printf '{"merged":true}\n'
+      exit 0
+      ;;
+    *"/pulls/7"*)
+      printf '{"number":7,"title":"pr","state":"open","head":{"ref":"f"},"base":{"ref":"main"},"html_url":"https://github.com/o/r/pull/7","node_id":"PR_1"}\n'
+      exit 0
+      ;;
+    *"/pulls"*)
+      printf '[{"number":7,"title":"pr","state":"open","head":{"ref":"f"},"base":{"ref":"main"},"html_url":"https://github.com/o/r/pull/7"}]\n'
+      exit 0
+      ;;
+  esac
+fi
+exit 1
+"#;
+    std::fs::write(&gh, script).unwrap();
+    let mut perms = std::fs::metadata(&gh).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&gh, perms).unwrap();
+
+    let svc = GitRemoteService::with_bins(tmp.path(), None, Some(gh));
+
+    let list = svc.github_pull_requests(1, "", "o/r", 10).await.unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].iid, 7);
+    assert_eq!(list[0].provider, devinorium::git::GitHost::GitHub);
+    assert_eq!(list[0].web_url, "https://github.com/o/r/pull/7");
+
+    let pr = svc
+        .github_pull_request_for_branch(1, "", "o/r", "f")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(pr.iid, 7);
+
+    use devinorium::git::MergeRequestAction;
+    let v = svc
+        .github_pull_request_action(1, "", "o/r", 7, MergeRequestAction::Merge)
+        .await
+        .unwrap();
+    assert_eq!(v["merged"], true);
+
+    let v = svc
+        .github_pull_request_action(1, "", "o/r", 7, MergeRequestAction::Close)
+        .await
+        .unwrap();
+    assert_eq!(v["number"], 7);
 }

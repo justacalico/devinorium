@@ -9390,7 +9390,7 @@ async fn git_connections_list_login_logout() {
     assert_eq!(list[0]["id"], "gitlab");
     assert!(!list[0]["authed"].as_bool().unwrap());
     assert_eq!(list[1]["id"], "github");
-    assert!(list[1]["coming_soon"].as_bool().unwrap());
+    assert!(!list[1]["coming_soon"].as_bool().unwrap());
 
     // Simulate glab already being authenticated on the host.
     write_glab_token_file(&home, 1);
@@ -16197,4 +16197,554 @@ async fn web_access_disabled_sends_no_browser_server() {
         seen[0].iter().all(|n| n != "devinorium-browser"),
         "browser must not be injected while disabled, got {seen:?}"
     );
+}
+
+fn write_fake_gh(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("gh");
+    let script = r#"#!/bin/sh
+set -e
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  host="github.com"
+  if [ "$3" = "--hostname" ]; then
+    host="$4"
+  fi
+  if [ -f "$XDG_CONFIG_HOME/token" ] && [ -s "$XDG_CONFIG_HOME/token" ]; then
+    echo "$host"
+    echo "  Logged in to $host account testuser"
+    echo "  - Active account: true"
+    exit 0
+  else
+    echo "$host"
+    echo "  x Not logged in to $host"
+    exit 1
+  fi
+fi
+if [ "$1" = "auth" ] && [ "$2" = "logout" ]; then
+  rm -f "$XDG_CONFIG_HOME/token"
+  echo "Logged out of github.com"
+  exit 0
+fi
+if [ "$1" = "api" ]; then
+  path="$2"
+  case "$path" in
+    *"/actions/runs/"*"/jobs"*)
+      printf '{"jobs":[{"id":101,"name":"cargo test","status":"in_progress","conclusion":null,"html_url":"https://github.com/o/r/runs/1/job/101","started_at":"2026-01-01T00:00:00Z"},{"id":102,"name":"flutter test","status":"completed","conclusion":"success","workflow_name":"CI","html_url":"https://github.com/o/r/runs/1/job/102","started_at":"2026-01-01T00:00:00Z","completed_at":"2026-01-01T00:01:00Z"}]}\n'
+      exit 0
+      ;;
+    *"/actions/jobs/"*"/logs"*)
+      printf 'running tests\nall good\n'
+      exit 0
+      ;;
+    *"/actions/jobs/"*)
+      printf '{"id":101,"name":"cargo test","status":"completed","conclusion":"success","html_url":"https://github.com/o/r/runs/1/job/101","started_at":"2026-01-01T00:00:00Z","completed_at":"2026-01-01T00:00:30Z"}\n'
+      exit 0
+      ;;
+    *"/pulls/"*"/files"*)
+      printf '[{"filename":"src/main.rs","status":"modified","patch":"@@ -1 +1 @@\\n-old\\n+new"}]\n'
+      exit 0
+      ;;
+    *"/pulls/"*"/comments"*)
+      printf '[{"id":1,"body":"lgtm","html_url":"https://github.com/o/r/pull/7#comment-1","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z","user":{"login":"reviewer","avatar_url":"https://a/u.png"}}]\n'
+      exit 0
+      ;;
+    *"/pulls/"*"/merge"*)
+      printf '{"sha":"abc","merged":true,"message":"ok"}\n'
+      exit 0
+      ;;
+    *"/pulls/"*)
+      prn=$(echo "$path" | sed -n 's|.*pulls/\([0-9]*\).*|\1|p')
+      printf '{"number":%s,"title":"a pr","state":"open","draft":false,"mergeable":true,"html_url":"https://github.com/o/r/pull/%s","node_id":"PR_1","head":{"ref":"feature","sha":"deadbeef"},"base":{"ref":"main","sha":"beefdead"},"user":{"login":"author","avatar_url":"https://a/u.png"},"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T00:00:00Z"}\n' "$prn" "$prn"
+      exit 0
+      ;;
+    *"/pulls"*)
+      printf '[{"number":7,"title":"a pr","state":"open","head":{"ref":"feature"},"base":{"ref":"main"},"html_url":"https://github.com/o/r/pull/7"}]\n'
+      exit 0
+      ;;
+    *"/actions/runs"*)
+      printf '{"workflow_runs":[{"id":42,"status":"completed","conclusion":"success","name":"CI","html_url":"https://github.com/o/r/actions/runs/42","head_branch":"feature","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T00:00:00Z"}]}\n'
+      exit 0
+      ;;
+    *"/issues/"*"/comments"*)
+      printf '[]\n'
+      exit 0
+      ;;
+    *"/issues/"*)
+      printf '{"number":3,"title":"a bug","state":"open","html_url":"https://github.com/o/r/issues/3","labels":[{"name":"bug"}],"user":{"login":"reporter","avatar_url":""},"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T00:00:00Z"}\n'
+      exit 0
+      ;;
+    *"/issues"*)
+      printf '[{"number":3,"title":"a bug","state":"open","html_url":"https://github.com/o/r/issues/3","labels":[{"name":"bug"}]}]\n'
+      exit 0
+      ;;
+    *"/contents/"*)
+      printf '{"name":"f.txt","content":"aGVsbG8=","encoding":"base64","size":5}\n'
+      exit 0
+      ;;
+  esac
+  host="github.com"
+  if [ "$3" = "--hostname" ]; then
+    host="$4"
+  fi
+  printf '{"host":"%s","path":"%s"}\n' "$host" "$path"
+  exit 0
+fi
+echo "unknown gh command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+fn write_gh_token_file(config_root: &std::path::Path, user_id: i64) {
+    let token_file = config_root
+        .join("gh")
+        .join(user_id.to_string())
+        .join(".config")
+        .join("token");
+    std::fs::create_dir_all(token_file.parent().unwrap()).unwrap();
+    std::fs::write(&token_file, "gho-test").unwrap();
+}
+
+#[tokio::test]
+async fn git_connections_github_login_and_logout() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let gh = write_fake_gh(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_bins(home.clone(), None, Some(gh)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/git-connections", &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let list = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    let github = list.iter().find(|c| c["id"] == "github").unwrap();
+    assert!(github["enabled"].as_bool().unwrap());
+    assert!(!github["authed"].as_bool().unwrap());
+    assert!(!github["coming_soon"].as_bool().unwrap());
+
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/git-connections/github", &cookie, "{}"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    write_gh_token_file(&home, 1);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/git-connections/github", &cookie, "{}"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["id"], "github");
+    assert_eq!(v["host"], "github.com");
+    assert_eq!(v["account"], "testuser");
+    assert!(v["authed"].as_bool().unwrap());
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            "/api/git-connections/github",
+            &cookie,
+            r#"{"hostname":"github.com"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn git_connections_github_routes_require_owner() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let gh = write_fake_gh(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_bins(home, None, Some(gh)));
+
+    let app = devinorium::build_app(state);
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "mallory2", "mallorypass123").await;
+    let cookie = login_as(&app, "mallory2", "mallorypass123").await;
+
+    for (method, uri, body) in [
+        ("POST", "/api/git-connections/github", "{}"),
+        ("DELETE", "/api/git-connections/github", "{}"),
+        (
+            "GET",
+            "/api/git-connections/github/proxy?path=repos/o/r",
+            "",
+        ),
+        (
+            "GET",
+            "/api/git-connections/github/pipelines?project=o/r&iid=1",
+            "",
+        ),
+        (
+            "POST",
+            "/api/git-connections/github/merge-requests/actions",
+            r#"{"project":"o/r","iid":1,"action":"merge"}"#,
+        ),
+    ] {
+        let status = request_status(app.clone(), &cookie, method, uri, body).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}");
+    }
+
+    let status = request_status(app, &owner_cookie, "GET", "/api/git-connections", "").await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn git_connections_github_proxy_forwards_and_rejects() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let gh = write_fake_gh(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_bins(home, None, Some(gh)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/github/proxy?path=repos%2Fowner%2Frepo&hostname=corp.ghe.com",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["host"], "corp.ghe.com");
+    assert_eq!(v["path"], "repos/owner/repo");
+
+    // Non-repository paths are refused.
+    for path in [
+        "projects/foo",
+        "user/repos",
+        "graphqlx",
+        "/repos/o/r",
+        "repos/o/../r",
+    ] {
+        let uri = format!("/api/git-connections/github/proxy?path={path}");
+        let resp = app
+            .clone()
+            .oneshot(authed("GET", &uri, &cookie, ""))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn git_connections_github_pipelines_jobs_and_logs() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let gh = write_fake_gh(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_bins(home, None, Some(gh)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/github/pipelines?project=o%2Fr&iid=7",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let runs = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0]["id"], 42);
+    assert_eq!(runs[0]["status"], "success");
+    assert_eq!(runs[0]["name"], "CI");
+    assert_eq!(runs[0]["ref_name"], "feature");
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/github/pipelines/jobs?project=o%2Fr&pipeline_id=42",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let jobs = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    assert_eq!(jobs.len(), 2);
+    assert_eq!(jobs[0]["status"], "running");
+    assert_eq!(jobs[1]["status"], "success");
+    assert_eq!(jobs[1]["stage"], "CI");
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/github/pipelines/jobs/logs?project=o%2Fr&job_id=101",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["job"]["id"], 101);
+    assert_eq!(v["job"]["status"], "success");
+    assert!(v["trace"].as_str().unwrap().contains("all good"));
+}
+
+#[tokio::test]
+async fn git_connections_github_merge_request_actions() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let gh = write_fake_gh(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_bins(home, None, Some(gh)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    for action in ["merge", "close", "reopen"] {
+        let body = format!(r#"{{"project":"o/r","iid":7,"action":"{action}"}}"#);
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "POST",
+                "/api/git-connections/github/merge-requests/actions",
+                &cookie,
+                &body,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "{action}");
+    }
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/git-connections/github/merge-requests/actions",
+            &cookie,
+            r#"{"project":"o/r","iid":0,"action":"merge"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+async fn make_github_project(app: &Router, cookie: &str, repo: &std::path::Path) -> i64 {
+    let mut remote = std::process::Command::new("git");
+    remote
+        .args(["remote", "add", "origin", "git@github.com:owner/repo.git"])
+        .current_dir(repo);
+    assert!(remote.output().unwrap().status.success());
+    create_git_project(app, cookie, repo).await
+}
+
+#[tokio::test]
+async fn git_remote_info_and_lists_for_github_remote() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let gh = write_fake_gh(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_bins(home, None, Some(gh)));
+    let app = devinorium::build_app(state);
+
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = make_github_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/remote"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["provider"], "github");
+    assert_eq!(v["hostname"], "github.com");
+    assert_eq!(v["project_path"], "owner/repo");
+    assert_eq!(v["web_url"], "https://github.com/owner/repo");
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/merge-requests"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let prs = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    assert_eq!(prs.len(), 1);
+    assert_eq!(prs[0]["provider"], "github");
+    assert_eq!(prs[0]["iid"], 7);
+    assert_eq!(prs[0]["web_url"], "https://github.com/o/r/pull/7");
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/issues"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let issues = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0]["iid"], 3);
+    assert_eq!(issues[0]["web_url"], "https://github.com/o/r/issues/3");
+}
+
+#[tokio::test]
+async fn git_merge_request_for_branch_returns_github_pull_request() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let gh = write_fake_gh(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_bins(home, None, Some(gh)));
+    let app = devinorium::build_app(state);
+
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = make_github_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/merge-request?branch=feature"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["provider"], "github");
+    assert_eq!(v["iid"], 7);
+    assert_eq!(v["source_branch"], "feature");
+    assert_eq!(v["target_branch"], "main");
+    assert_eq!(v["web_url"], "https://github.com/o/r/pull/7");
+}
+
+#[tokio::test]
+async fn git_remote_info_rejects_non_host_remote() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/remote"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn thread_link_github_pull_request_validates_and_persists() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = make_github_project(&app, &cookie, &repo).await;
+    let tid = make_thread(&app, &cookie, pid, "github link test").await;
+
+    let url = "https://github.com/owner/repo/pull/9";
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            &format!(r#"{{"linked_mr":"{url}"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let linked = &v["thread"]["linked_mr"];
+    assert_eq!(linked["provider"], "github");
+    assert_eq!(linked["hostname"], "github.com");
+    assert_eq!(linked["project_path"], "owner/repo");
+    assert_eq!(linked["iid"], 9);
+    assert_eq!(linked["web_url"], url);
+}
+
+#[tokio::test]
+async fn thread_link_rejects_cross_host_provider_mix() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = make_github_project(&app, &cookie, &repo).await;
+    let tid = make_thread(&app, &cookie, pid, "mismatched link").await;
+
+    // A GitLab-shaped URL on github.com resolves to a different provider and
+    // must not be linked to a GitHub repository.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            r#"{"linked_mr":"https://github.com/owner/repo/-/merge_requests/9"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }

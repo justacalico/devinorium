@@ -698,4 +698,34 @@ mixin GitStore on AppStateBase {
       notifyListeners();
     }
   }
+
+  @override
+  Future<void> connectGitHub({String? hostname}) async {
+    try {
+      final updated = await api.connectGitHub(hostname: hostname);
+      final index = _gitConnections.indexWhere((c) => c.id == updated.id);
+      if (index >= 0) {
+        _gitConnections[index] = updated;
+      } else {
+        _gitConnections.add(updated);
+      }
+      _bumpGitConnections();
+      _globalError = '';
+      notifyListeners();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  @override
+  Future<void> disconnectGitHub({String? hostname}) async {
+    try {
+      await api.disconnectGitHub(hostname: hostname);
+      await loadGitConnections();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
 }

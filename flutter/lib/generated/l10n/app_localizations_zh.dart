@@ -1059,6 +1059,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noMergeRequests => '没有打开的合并请求';
 
   @override
+  String get pullRequests => '拉取请求';
+
+  @override
+  String get noPullRequests => '没有打开的拉取请求';
+
+  @override
   String get issues => '议题';
 
   @override
@@ -1156,6 +1162,22 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get gitlabConnectHint => '在终端中运行 glab auth login，然后点击连接。';
+
+  @override
+  String get githubNotInstalled => '未安装 GitHub CLI（gh）。';
+
+  @override
+  String get githubConnectHint => '在终端中运行 gh auth login，然后点击连接。';
+
+  @override
+  String githubConnectFailed(String error) {
+    return 'GitHub 连接失败：$error';
+  }
+
+  @override
+  String githubDisconnectFailed(String error) {
+    return 'GitHub 断开失败：$error';
+  }
 
   @override
   String get none => '无';
@@ -1298,10 +1320,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get shareLinkCopied => '分享链接已复制到剪贴板';
 
   @override
-  String get mergeRequestUrlHint => 'GitLab 合并请求 URL';
+  String get mergeRequestUrlHint => 'GitLab 合并请求或 GitHub 拉取请求 URL';
 
   @override
-  String get invalidMergeRequestUrl => '请输入有效的 GitLab 合并请求 URL';
+  String get invalidMergeRequestUrl => '请输入有效的 GitLab 或 GitHub 合并请求 URL';
 
   @override
   String get overview => '概览';

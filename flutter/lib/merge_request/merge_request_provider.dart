@@ -21,11 +21,17 @@ abstract class MergeRequestProvider extends ChangeNotifier {
   /// Throws if no merge request is loaded or the host rejects the action.
   Future<void> perform(MergeRequestAction action);
 
+  /// Whether CI/CD pipelines and their job logs are available.
+  bool get supportsPipelines => false;
+
+  /// Whether repository files can be loaded for inline image diffs.
+  bool get supportsFiles => false;
+
   /// Load the CI/CD jobs for a [pipeline] belonging to the current merge
   /// request.
   ///
   /// Throws [UnsupportedError] by default; providers that support pipelines
-  /// (GitLab) should override this.
+  /// (GitLab, GitHub) should override this.
   Future<List<MergeRequestPipelineJob>> loadJobs(
     MergeRequestPipeline pipeline,
   ) {
@@ -35,7 +41,7 @@ abstract class MergeRequestProvider extends ChangeNotifier {
   /// Load the live log for a single CI/CD [job].
   ///
   /// Throws [UnsupportedError] by default; providers that support pipelines
-  /// (GitLab) should override this.
+  /// (GitLab, GitHub) should override this.
   Future<JobLog> loadJobLog(MergeRequestPipelineJob job) {
     throw UnsupportedError('Job logs are not supported by this provider');
   }
@@ -45,7 +51,7 @@ abstract class MergeRequestProvider extends ChangeNotifier {
   /// that ref or cannot be fetched.
   ///
   /// Throws [UnsupportedError] by default; providers that can read repository
-  /// files (GitLab) should override this.
+  /// files (GitLab, GitHub) should override this.
   Future<Uint8List?> loadFile(String path, String ref) async {
     throw UnsupportedError('File loading is not supported by this provider');
   }

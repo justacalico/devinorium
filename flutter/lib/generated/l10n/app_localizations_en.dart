@@ -1114,6 +1114,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noMergeRequests => 'No open merge requests';
 
   @override
+  String get pullRequests => 'Pull requests';
+
+  @override
+  String get noPullRequests => 'No open pull requests';
+
+  @override
   String get issues => 'Issues';
 
   @override
@@ -1213,6 +1219,23 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get gitlabConnectHint =>
       'Run glab auth login in your terminal, then tap Connect.';
+
+  @override
+  String get githubNotInstalled => 'GitHub CLI (gh) is not installed';
+
+  @override
+  String get githubConnectHint =>
+      'Run gh auth login in your terminal, then tap Connect.';
+
+  @override
+  String githubConnectFailed(String error) {
+    return 'GitHub connect failed: $error';
+  }
+
+  @override
+  String githubDisconnectFailed(String error) {
+    return 'GitHub disconnect failed: $error';
+  }
 
   @override
   String get none => 'None';
@@ -1361,10 +1384,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shareLinkCopied => 'Share link copied to clipboard';
 
   @override
-  String get mergeRequestUrlHint => 'GitLab merge request URL';
+  String get mergeRequestUrlHint =>
+      'GitLab merge request or GitHub pull request URL';
 
   @override
-  String get invalidMergeRequestUrl => 'Enter a valid GitLab merge request URL';
+  String get invalidMergeRequestUrl =>
+      'Enter a valid GitLab or GitHub merge request URL';
 
   @override
   String get overview => 'Overview';

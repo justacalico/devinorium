@@ -1994,6 +1994,18 @@ abstract class AppLocalizations {
   /// **'No open merge requests'**
   String get noMergeRequests;
 
+  /// No description provided for @pullRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull requests'**
+  String get pullRequests;
+
+  /// No description provided for @noPullRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'No open pull requests'**
+  String get noPullRequests;
+
   /// No description provided for @issues.
   ///
   /// In en, this message translates to:
@@ -2179,6 +2191,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Run glab auth login in your terminal, then tap Connect.'**
   String get gitlabConnectHint;
+
+  /// No description provided for @githubNotInstalled.
+  ///
+  /// In en, this message translates to:
+  /// **'GitHub CLI (gh) is not installed'**
+  String get githubNotInstalled;
+
+  /// No description provided for @githubConnectHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Run gh auth login in your terminal, then tap Connect.'**
+  String get githubConnectHint;
+
+  /// No description provided for @githubConnectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'GitHub connect failed: {error}'**
+  String githubConnectFailed(String error);
+
+  /// No description provided for @githubDisconnectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'GitHub disconnect failed: {error}'**
+  String githubDisconnectFailed(String error);
 
   /// No description provided for @none.
   ///
@@ -2441,13 +2477,13 @@ abstract class AppLocalizations {
   /// No description provided for @mergeRequestUrlHint.
   ///
   /// In en, this message translates to:
-  /// **'GitLab merge request URL'**
+  /// **'GitLab merge request or GitHub pull request URL'**
   String get mergeRequestUrlHint;
 
   /// No description provided for @invalidMergeRequestUrl.
   ///
   /// In en, this message translates to:
-  /// **'Enter a valid GitLab merge request URL'**
+  /// **'Enter a valid GitLab or GitHub merge request URL'**
   String get invalidMergeRequestUrl;
 
   /// No description provided for @overview.

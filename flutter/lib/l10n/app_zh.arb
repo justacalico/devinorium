@@ -679,6 +679,8 @@
   "noCommits": "还没有提交",
   "mergeRequests": "合并请求",
   "noMergeRequests": "没有打开的合并请求",
+  "pullRequests": "拉取请求",
+  "noPullRequests": "没有打开的拉取请求",
   "issues": "议题",
   "noIssues": "没有打开的议题",
   "noDiffAvailable": "无可用差异预览",
@@ -731,6 +733,24 @@
   "loading": "加载中…",
   "gitlabNotInstalled": "未安装 GitLab CLI（glab）。",
   "gitlabConnectHint": "在终端中运行 glab auth login，然后点击连接。",
+  "githubNotInstalled": "未安装 GitHub CLI（gh）。",
+  "githubConnectHint": "在终端中运行 gh auth login，然后点击连接。",
+  "githubConnectFailed": "GitHub 连接失败：{error}",
+  "@githubConnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "githubDisconnectFailed": "GitHub 断开失败：{error}",
+  "@githubDisconnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "none": "无",
   "createAndSwitchBranch": "创建并切换",
   "send": "发送",
@@ -809,8 +829,8 @@
   "stopSharing": "停止分享",
   "shareStopped": "已停止分享",
   "shareLinkCopied": "分享链接已复制到剪贴板",
-  "mergeRequestUrlHint": "GitLab 合并请求 URL",
-  "invalidMergeRequestUrl": "请输入有效的 GitLab 合并请求 URL",
+  "mergeRequestUrlHint": "GitLab 合并请求或 GitHub 拉取请求 URL",
+  "invalidMergeRequestUrl": "请输入有效的 GitLab 或 GitHub 合并请求 URL",
   "overview": "概览",
   "changes": "更改",
   "comments": "评论",

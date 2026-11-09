@@ -261,15 +261,18 @@ class GitConnection {
 /// A merge request reference stored on a thread record.
 ///
 /// Unlike [MergeRequestLink], this does not include live state; it just keeps
-/// enough information to resolve the MR in the GitLab UI or to fetch its
+/// enough information to resolve the MR/PR in the host UI or to fetch its
 /// current summary on demand.
 class LinkedMergeRequestRef {
+  /// The git host this reference belongs to: `gitlab` or `github`.
+  final String provider;
   final String hostname;
   final String projectPath;
   final int iid;
   final String webUrl;
 
   const LinkedMergeRequestRef({
+    this.provider = 'gitlab',
     required this.hostname,
     required this.projectPath,
     required this.iid,
@@ -278,22 +281,49 @@ class LinkedMergeRequestRef {
 
   factory LinkedMergeRequestRef.fromJson(Map<String, dynamic> j) =>
       LinkedMergeRequestRef(
+        provider: j['provider'] as String? ?? 'gitlab',
         hostname: j['hostname'] as String? ?? '',
         projectPath: j['project_path'] as String? ?? '',
         iid: (j['iid'] as num?)?.toInt() ?? 0,
         webUrl: j['web_url'] as String? ?? '',
       );
 
-  /// Parse a GitLab merge request URL into a reference.
+  /// Parse a GitLab merge request or GitHub pull request URL into a
+  /// reference.
   ///
-  /// Accepts any host so self-managed GitLab works. The path must contain the
-  /// `/-/merge_requests/` marker.
+  /// GitLab URLs carry `/-/merge_requests/` on any host so self-managed
+  /// instances work. GitHub URLs carry `/pull/` with exactly `owner/repo`
+  /// before it; any host is accepted so GitHub Enterprise servers work too —
+  /// the backend still verifies the link against the project's remote.
   static LinkedMergeRequestRef? tryParse(String url) {
     final uri = Uri.tryParse(url);
     if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
       return null;
     }
     final segs = uri.pathSegments;
+
+    // The last `pull` segment wins so an owner or repo literally named
+    // `pull` (github.com/pull/pull/pull/5) still resolves correctly.
+    final pullIdx = segs.lastIndexOf('pull');
+    if (pullIdx == 2 && segs.length > 3) {
+      final iid = int.tryParse(segs[3]);
+      if (iid != null && iid > 0) {
+        final projectPath = segs.take(2).join('/');
+        if (!projectPath.contains(':') &&
+            !projectPath.contains('..') &&
+            !projectPath.contains('//')) {
+          return LinkedMergeRequestRef(
+            provider: 'github',
+            hostname: (uri.host.isEmpty ? 'github.com' : uri.host).toLowerCase(),
+            projectPath: projectPath,
+            iid: iid,
+            webUrl: url,
+          );
+        }
+      }
+      return null;
+    }
+
     final mrIdx = segs.indexOf('merge_requests');
     if (mrIdx < 2 || segs[mrIdx - 1] != '-') return null;
     if (mrIdx + 1 >= segs.length) return null;
@@ -318,14 +348,15 @@ class LinkedMergeRequestRef {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! LinkedMergeRequestRef) return false;
-    return hostname == other.hostname &&
+    return provider == other.provider &&
+        hostname == other.hostname &&
         projectPath == other.projectPath &&
         iid == other.iid &&
         webUrl == other.webUrl;
   }
 
   @override
-  int get hashCode => Object.hash(hostname, projectPath, iid, webUrl);
+  int get hashCode => Object.hash(provider, hostname, projectPath, iid, webUrl);
 }
 
 /// A lightweight merge request reference linked to a thread's branch.
@@ -334,6 +365,8 @@ class LinkedMergeRequestRef {
 /// `GET /api/projects/:id/git/merge-request` endpoint, used to surface the
 /// open MR for a thread's branch without loading the full diff payload.
 class MergeRequestLink {
+  /// The git host this reference belongs to: `gitlab` or `github`.
+  final String provider;
   final int iid;
   final String title;
   final String state;
@@ -343,6 +376,7 @@ class MergeRequestLink {
   final bool draft;
 
   const MergeRequestLink({
+    this.provider = 'gitlab',
     required this.iid,
     required this.title,
     required this.state,
@@ -351,6 +385,10 @@ class MergeRequestLink {
     required this.webUrl,
     this.draft = false,
   });
+
+  /// The host-specific reference marker: `!` for GitLab merge requests,
+  /// `#` for GitHub pull requests.
+  String get refMarker => provider == 'github' ? '#' : '!';
 
   bool get isOpen => state == 'opened' || state == 'open';
 
@@ -362,6 +400,7 @@ class MergeRequestLink {
         ? int.tryParse(raw) ?? 0
         : 0;
     return MergeRequestLink(
+      provider: j['provider'] as String? ?? 'gitlab',
       iid: iid,
       title: j['title'] as String? ?? '',
       state: j['state'] as String? ?? '',
@@ -373,6 +412,7 @@ class MergeRequestLink {
   }
 
   factory MergeRequestLink.fromRef(LinkedMergeRequestRef ref) => MergeRequestLink(
+    provider: ref.provider,
     iid: ref.iid,
     title: '',
     state: '',
@@ -386,7 +426,8 @@ class MergeRequestLink {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! MergeRequestLink) return false;
-    return iid == other.iid &&
+    return provider == other.provider &&
+        iid == other.iid &&
         title == other.title &&
         state == other.state &&
         sourceBranch == other.sourceBranch &&
@@ -397,6 +438,7 @@ class MergeRequestLink {
 
   @override
   int get hashCode => Object.hash(
+    provider,
     iid,
     title,
     state,
@@ -408,8 +450,8 @@ class MergeRequestLink {
 }
 
 /// The git host a repository's remote points at, as returned by
-/// `GET /api/projects/:id/git/remote`. `provider` is `gitlab` today; the
-/// field lets the panel gate host-specific sections and grow later.
+/// `GET /api/projects/:id/git/remote`. `provider` is `gitlab` or `github`;
+/// the field lets the panel gate host-specific sections and grow later.
 class GitRemoteInfo {
   final String provider;
   final String hostname;

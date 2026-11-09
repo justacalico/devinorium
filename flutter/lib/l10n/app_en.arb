@@ -708,6 +708,8 @@
   "noCommits": "No commits yet",
   "mergeRequests": "Merge requests",
   "noMergeRequests": "No open merge requests",
+  "pullRequests": "Pull requests",
+  "noPullRequests": "No open pull requests",
   "issues": "Issues",
   "noIssues": "No open issues",
   "noDiffAvailable": "No diff preview available",
@@ -760,6 +762,24 @@
   "loading": "Loading…",
   "gitlabNotInstalled": "GitLab CLI (glab) is not installed",
   "gitlabConnectHint": "Run glab auth login in your terminal, then tap Connect.",
+  "githubNotInstalled": "GitHub CLI (gh) is not installed",
+  "githubConnectHint": "Run gh auth login in your terminal, then tap Connect.",
+  "githubConnectFailed": "GitHub connect failed: {error}",
+  "@githubConnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "githubDisconnectFailed": "GitHub disconnect failed: {error}",
+  "@githubDisconnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "none": "None",
   "createAndSwitchBranch": "Create and switch",
   "send": "Send",
@@ -838,8 +858,8 @@
   "stopSharing": "Stop sharing",
   "shareStopped": "Sharing stopped",
   "shareLinkCopied": "Share link copied to clipboard",
-  "mergeRequestUrlHint": "GitLab merge request URL",
-  "invalidMergeRequestUrl": "Enter a valid GitLab merge request URL",
+  "mergeRequestUrlHint": "GitLab merge request or GitHub pull request URL",
+  "invalidMergeRequestUrl": "Enter a valid GitLab or GitHub merge request URL",
   "overview": "Overview",
   "changes": "Changes",
   "comments": "Comments",

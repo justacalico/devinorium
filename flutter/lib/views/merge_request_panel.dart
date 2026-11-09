@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
+import '../merge_request/github_merge_request_provider.dart';
 import '../merge_request/gitlab_merge_request_provider.dart';
 import '../merge_request/merge_request_models.dart';
 import '../merge_request/merge_request_provider.dart';
@@ -40,6 +41,9 @@ class _MergeRequestPanelState extends State<MergeRequestPanel> {
     }
     _ownsProvider = true;
     final client = context.read<AppState>().api.client;
+    if (GitHubMergeRequestProvider.canHandleUrl(widget.url)) {
+      return GitHubMergeRequestProvider(client)..load(widget.url);
+    }
     return GitLabMergeRequestProvider(client)..load(widget.url);
   }
 
@@ -51,7 +55,7 @@ class _MergeRequestPanelState extends State<MergeRequestPanel> {
 
   void _showJobLog(BuildContext context, MergeRequestPipelineJob job) {
     final provider = _provider;
-    if (provider is! GitLabMergeRequestProvider) return;
+    if (provider == null || !provider.supportsPipelines) return;
 
     final appState = context.read<AppState>();
     showDialog(
@@ -121,13 +125,13 @@ class _MergeRequestPanelState extends State<MergeRequestPanel> {
                           onRetry: () => _provider!.load(widget.url),
                           onLinkTap: (url) =>
                               context.read<AppState>().openLink(url),
-                          onLoadJobs: _provider! is GitLabMergeRequestProvider
+                          onLoadJobs: _provider!.supportsPipelines
                               ? _provider!.loadJobs
                               : null,
-                          onJobTap: _provider! is GitLabMergeRequestProvider
+                          onJobTap: _provider!.supportsPipelines
                               ? (job) => _showJobLog(context, job)
                               : null,
-                          onLoadFile: _provider! is GitLabMergeRequestProvider
+                          onLoadFile: _provider!.supportsFiles
                               ? _provider!.loadFile
                               : null,
                           onAction: _provider!.perform,

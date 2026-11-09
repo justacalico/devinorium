@@ -778,6 +778,8 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> loadGitConnections();
   Future<void> connectGitLab({String? hostname});
   Future<void> disconnectGitLab({String? hostname});
+  Future<void> connectGitHub({String? hostname});
+  Future<void> disconnectGitHub({String? hostname});
   Future<void> loadTailscaleStatus();
   Future<void> loadMachines();
   Future<void> loadMcpServers();

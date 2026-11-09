@@ -421,6 +421,20 @@ class ApiService {
     });
   }
 
+  Future<GitConnection> connectGitHub({String? hostname}) async {
+    final body = <String, dynamic>{
+      if (hostname != null && hostname.isNotEmpty) 'hostname': hostname,
+    };
+    final j = await _client.post('/api/git-connections/github', body);
+    return GitConnection.fromJson(j);
+  }
+
+  Future<void> disconnectGitHub({String? hostname}) async {
+    await _client.deleteWithBody('/api/git-connections/github', {
+      if (hostname != null && hostname.isNotEmpty) 'hostname': hostname,
+    });
+  }
+
   // ---- Projects ----
 
   Future<List<Project>> listProjects({int? limit, int? offset}) async {

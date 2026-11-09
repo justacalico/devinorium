@@ -1,13 +1,14 @@
-//! GitLab issue listing.
+//! Issue listing for GitLab and GitHub.
 
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
+use super::parse::validate_project_path;
 use super::{GitRemoteService, RemoteError};
 
 /// A lightweight issue summary, used to surface a repo's open issues in the
-/// sidebar git panel without loading the full note payload.
+/// sidebar git panel without loading the full comment payload.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct GitLabIssueSummary {
+pub struct RemoteIssueSummary {
     pub iid: i64,
     pub title: String,
     pub state: String,
@@ -23,7 +24,7 @@ impl GitRemoteService {
         hostname: &str,
         project_path: &str,
         per_page: usize,
-    ) -> Result<Vec<GitLabIssueSummary>, RemoteError> {
+    ) -> Result<Vec<RemoteIssueSummary>, RemoteError> {
         if project_path.is_empty() {
             return Err(RemoteError::StatusFailed("project is required".into()));
         }
@@ -41,9 +42,37 @@ impl GitRemoteService {
 
         Ok(list.into_iter().map(parse_issue_summary).collect())
     }
+
+    /// List a repository's open issues, most recently updated first.
+    ///
+    /// GitHub's issues endpoint returns pull requests too; anything with a
+    /// `pull_request` key is dropped so the panel only lists real issues.
+    pub async fn github_issues(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        per_page: usize,
+    ) -> Result<Vec<RemoteIssueSummary>, RemoteError> {
+        validate_project_path(project_path)?;
+        let repo = Self::github_repo_path(project_path)?;
+        let path =
+            format!("{repo}/issues?state=open&sort=updated&direction=desc&per_page={per_page}");
+
+        let output = self.github_api(user_id, hostname, &path).await?;
+        let list: Vec<serde_json::Value> = serde_json::from_str(&output).map_err(|e| {
+            RemoteError::StatusFailed(format!("github returned invalid issue json: {e}"))
+        })?;
+
+        Ok(list
+            .into_iter()
+            .filter(|v| v.get("pull_request").is_none())
+            .map(parse_github_issue_summary)
+            .collect())
+    }
 }
 
-pub(super) fn parse_issue_summary(value: serde_json::Value) -> GitLabIssueSummary {
+pub(super) fn parse_issue_summary(value: serde_json::Value) -> RemoteIssueSummary {
     let iid = value["iid"]
         .as_i64()
         .or_else(|| value["iid"].as_str().and_then(|s| s.parse().ok()))
@@ -57,11 +86,42 @@ pub(super) fn parse_issue_summary(value: serde_json::Value) -> GitLabIssueSummar
                 .collect()
         })
         .unwrap_or_default();
-    GitLabIssueSummary {
+    RemoteIssueSummary {
         iid,
         title: value["title"].as_str().unwrap_or("").to_string(),
         state: value["state"].as_str().unwrap_or("").to_string(),
         web_url: value["web_url"].as_str().unwrap_or("").to_string(),
+        labels,
+    }
+}
+
+/// Convert a GitHub issue JSON object into the shared summary shape.
+///
+/// Labels arrive as objects with a `name` field, but plain strings are
+/// accepted too since previews and older payloads used that form.
+pub(super) fn parse_github_issue_summary(value: serde_json::Value) -> RemoteIssueSummary {
+    let iid = value["number"]
+        .as_i64()
+        .or_else(|| value["number"].as_str().and_then(|s| s.parse().ok()))
+        .unwrap_or(0);
+    let labels = value["labels"]
+        .as_array()
+        .map(|labels| {
+            labels
+                .iter()
+                .filter_map(|l| {
+                    l.as_str()
+                        .map(str::to_string)
+                        .or_else(|| l["name"].as_str().map(str::to_string))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    RemoteIssueSummary {
+        iid,
+        title: value["title"].as_str().unwrap_or("").to_string(),
+        state: value["state"].as_str().unwrap_or("").to_string(),
+        web_url: value["html_url"].as_str().unwrap_or("").to_string(),
         labels,
     }
 }
@@ -100,6 +160,37 @@ mod tests {
         let issue = parse_issue_summary(value);
         assert_eq!(issue.iid, 7);
         assert!(issue.labels.is_empty());
+        assert_eq!(issue.web_url, "");
+    }
+
+    #[test]
+    fn parse_github_issue_summary_reads_all_fields() {
+        let value = serde_json::json!({
+            "number": 12,
+            "title": "Bug report",
+            "state": "open",
+            "html_url": "https://github.com/owner/repo/issues/12",
+            "labels": [{"name": "bug"}, {"name": "ui"}],
+        });
+        let issue = parse_github_issue_summary(value);
+        assert_eq!(issue.iid, 12);
+        assert_eq!(issue.title, "Bug report");
+        assert_eq!(issue.state, "open");
+        assert_eq!(issue.web_url, "https://github.com/owner/repo/issues/12");
+        assert_eq!(issue.labels, vec!["bug", "ui"]);
+    }
+
+    #[test]
+    fn parse_github_issue_summary_accepts_string_labels() {
+        let value = serde_json::json!({
+            "number": "5",
+            "title": "Legacy",
+            "state": "open",
+            "labels": ["wontfix"],
+        });
+        let issue = parse_github_issue_summary(value);
+        assert_eq!(issue.iid, 5);
+        assert_eq!(issue.labels, vec!["wontfix"]);
         assert_eq!(issue.web_url, "");
     }
 }

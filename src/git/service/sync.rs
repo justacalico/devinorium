@@ -213,11 +213,25 @@ impl GitService {
             {
                 continue;
             }
+            let cli_host = base
+                .split("://")
+                .nth(1)
+                .unwrap_or(base.as_str())
+                .split(':')
+                .next()
+                .unwrap_or("")
+                .trim_end_matches('/');
+            let cli = if crate::git::is_github_hostname(cli_host) {
+                "gh"
+            } else {
+                "glab"
+            };
             let helper = format!("credential.{base}/.helper");
+            let helper_cmd = format!("!{cli} auth git-credential");
             let _ = self
                 .run_with(
                     path,
-                    &["config", &helper, "!glab auth git-credential"],
+                    &["config", &helper, &helper_cmd],
                     Duration::from_secs(5),
                 )
                 .await;
