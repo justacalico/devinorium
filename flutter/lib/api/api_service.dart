@@ -1600,9 +1600,14 @@ class ApiService {
       // Web build: same origin, relative URL.
       return Uri.parse(path);
     }
+    // Keep any subpath the server is hosted under; replace(path:) alone
+    // would drop it and the WS dial would 404 behind a prefix.
     final uri = Uri.parse(base);
+    final prefix = uri.path.endsWith('/')
+        ? uri.path.substring(0, uri.path.length - 1)
+        : uri.path;
     return uri.replace(
-      path: path,
+      path: '$prefix$path',
       scheme: uri.scheme == 'https' ? 'wss' : 'ws',
     );
   }

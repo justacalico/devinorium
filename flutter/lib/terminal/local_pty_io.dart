@@ -13,16 +13,28 @@ class LocalPtyBackend {
   PseudoTerminal? _pty;
 
   void start({String? workingDirectory}) {
-    final shell = Platform.isWindows ? 'pwsh.exe' : 'bash';
+    // pwsh (PowerShell 7) is not installed on a stock Windows system;
+    // powershell.exe ships with the OS.
+    final shells = Platform.isWindows
+        ? const ['pwsh.exe', 'powershell.exe']
+        : const ['bash'];
     final cwd = _resolveWorkingDirectory(workingDirectory);
-    try {
-      _pty = PseudoTerminal.start(
-        shell,
-        const <String>[],
-        environment: Platform.environment,
-        workingDirectory: cwd,
-        raw: false,
-      );
+    Object? startError;
+    for (final shell in shells) {
+      try {
+        _pty = PseudoTerminal.start(
+          shell,
+          const <String>[],
+          environment: Platform.environment,
+          workingDirectory: cwd,
+          raw: false,
+        );
+        break;
+      } catch (e) {
+        startError = e;
+      }
+    }
+    if (_pty != null) {
       _pty!.out.listen(
         terminal.write,
         onError: (Object e) =>
@@ -32,9 +44,9 @@ class LocalPtyBackend {
       _pty!.exitCode.then((code) {
         terminal.write('\r\n${appL10n.terminalProcessExited('$code')}\r\n');
       });
-    } catch (e) {
+    } else {
       terminal.write(
-        '\r\n${appL10n.terminalShellStartFailed(shell, '$e')}\r\n',
+        '\r\n${appL10n.terminalShellStartFailed(shells.last, '$startError')}\r\n',
       );
     }
   }

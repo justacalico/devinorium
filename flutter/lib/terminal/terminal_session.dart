@@ -177,7 +177,7 @@ class RemoteTerminalSession extends TerminalSession {
       try {
         final data = jsonDecode(message) as Map<String, dynamic>;
         if (data['type'] == 'exited') {
-          final code = data['code'];
+          final code = data['code'] ?? '?';
           terminal.write('\r\n${appL10n.terminalSessionExited('$code')}\r\n');
           _stabilityTimer?.cancel();
           _setStatus(TerminalStatus.exited);

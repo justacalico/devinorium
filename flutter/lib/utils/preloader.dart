@@ -4,7 +4,7 @@ const _defaultTtl = Duration(seconds: 2);
 const _slowThreshold = Duration(milliseconds: 100);
 
 class _CacheEntry {
-  final Object value;
+  final Object? value;
   final DateTime expiresAt;
 
   _CacheEntry(this.value, this.expiresAt);
@@ -59,7 +59,7 @@ class Preloader {
       _inFlight.remove(key);
       final effectiveTtl = ttl ?? _defaultTtl;
       if (entry.valid && effectiveTtl > Duration.zero) {
-        _cache[key] = _CacheEntry(value as Object, DateTime.now().add(effectiveTtl));
+        _cache[key] = _CacheEntry(value, DateTime.now().add(effectiveTtl));
       }
       _maybeReport(key, stopwatch.elapsed);
       return value;
