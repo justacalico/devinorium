@@ -3,7 +3,7 @@
 //! These routes sit on the public router: callers authenticate with the
 //! capability token minted when a send references machines
 //! (`Authorization: Bearer mc_...`), not a session. Tokens live in memory
-//! and stay valid until the server restarts. A token only covers the
+//! and expire after a day or a server restart. A token only covers the
 //! machines the user referenced, so an agent can never reach a machine the
 //! user did not hand it. Machine secrets (VNC/SSH passwords, private
 //! keys) stay server-side — the agent only ever sees the token.

@@ -271,6 +271,48 @@ async fn share_publishes_transcript_at_public_url() {
 }
 
 #[tokio::test]
+async fn share_page_scrubs_machine_grant_tokens() {
+    let (app, database) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let token = format!("mc_{}", "ab12".repeat(16));
+    let body = format!(
+        r#"{{"project_id":{pid},"title":"curl -H 'Authorization: Bearer {token}' http://x"}}"#
+    );
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/threads", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let tid = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()
+        ["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    add_message(&database, &tid, "assistant", &format!("used {token}")).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/share"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let share_id = body["share_id"].as_str().expect("share_id on thread");
+
+    let (status, html) = public_get(&app, &format!("/shared/{share_id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!html.contains(&token), "grant token leaked: {html}");
+    assert!(html.contains("mc_[redacted]"));
+}
+
+#[tokio::test]
 async fn share_id_shows_up_in_thread_list() {
     let (app, database) = make_app().await;
     let cookie = login(&app).await;
