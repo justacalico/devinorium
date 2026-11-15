@@ -148,14 +148,19 @@ impl SshSession {
                         .ok()
                         .flatten()
                         .flatten();
-                    authenticated = handle
+                    authenticated = match handle
                         .authenticate_publickey(
                             user,
                             PrivateKeyWithHashAlg::new(Arc::new(key), hash),
                         )
                         .await
-                        .context("ssh public-key authentication failed")?
-                        .success();
+                    {
+                        Ok(a) => a.success(),
+                        Err(e) if password.is_empty() => {
+                            return Err(e).context("ssh public-key authentication failed")
+                        }
+                        Err(_) => false,
+                    };
                 }
                 // A corrupt key falls through to password auth rather
                 // than bricking a machine that has a valid password.
