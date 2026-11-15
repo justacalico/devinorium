@@ -248,13 +248,57 @@ async fn drive(
     cancel: Arc<AtomicBool>,
     pending_ids: Arc<StdMutex<Vec<String>>>,
 ) {
+    let mut wire = req.options;
+    let working_dir = wire.working_dir.clone();
+    // Hooks and plugin MCP merge are owner-trust features; the hub sends
+    // the flag so the satellite applies the same gate it cannot see.
+    let owner_plugins = wire.owner_plugins;
     let mut prompt = req.prompt;
-    if req.options.expand_skills {
-        prompt =
-            crate::skills::expand_skill_prompt(&prompt, &req.options.working_dir, &state.home_dir)
-                .await;
+    // Non-Devin providers expand every skill inline; Devin resolves its
+    // own skills natively, so only plugin-provided commands expand for it.
+    if wire.expand_skills {
+        prompt = crate::skills::expand_skill_prompt(&prompt, &working_dir, &state.home_dir).await;
+    } else {
+        prompt = crate::skills::expand_plugin_prompt(&prompt, &working_dir, &state.home_dir).await;
     }
-    let options = match send_options(&state, &tx, cancel, pending_ids, req.options) {
+
+    // The satellite's plugins live on its filesystem, so its hooks fire
+    // here - mirroring what the hub does for local owner runs.
+    if owner_plugins {
+        let outcome = crate::plugins::run_hooks(
+            &state.home_dir,
+            crate::plugins::EVENT_PROMPT_SUBMIT,
+            &working_dir,
+            serde_json::json!({
+                "session_id": req.session_id.as_deref().unwrap_or(""),
+                "run_id": req.run_id,
+                "prompt": prompt,
+            }),
+        )
+        .await;
+        if let Some(reason) = outcome.block {
+            let _ = tx.send(NodeEvent::Error {
+                message: format!("prompt blocked by plugin hook: {reason}"),
+            });
+            return;
+        }
+        crate::plugins::append_context(&mut prompt, &outcome.context);
+        if req.session_id.is_none() {
+            let outcome = crate::plugins::run_hooks(
+                &state.home_dir,
+                crate::plugins::EVENT_SESSION_START,
+                &working_dir,
+                serde_json::json!({ "run_id": req.run_id }),
+            )
+            .await;
+            crate::plugins::append_context(&mut prompt, &outcome.context);
+        }
+        crate::plugins::merge_plugin_mcp(&state.home_dir, &mut wire.mcp_servers).await;
+    }
+    let session_id = req.session_id.clone();
+    let result_prompt_dir = working_dir.clone();
+    let result_run_id = req.run_id.clone();
+    let options = match send_options(&state, &tx, cancel, pending_ids, wire) {
         Ok(o) => o,
         Err(e) => {
             let _ = tx.send(NodeEvent::Error {
@@ -264,7 +308,7 @@ async fn drive(
         }
     };
 
-    let result = match &req.session_id {
+    let result = match &session_id {
         Some(session_id) => provider
             .send(SendRequest {
                 session_id: session_id.clone(),
@@ -300,6 +344,26 @@ async fn drive(
                 })
         }
     };
+
+    if owner_plugins {
+        let stop_session = result
+            .as_ref()
+            .ok()
+            .and_then(|o| o.session_id.as_deref())
+            .or(session_id.as_deref())
+            .unwrap_or("");
+        let _ = crate::plugins::run_hooks(
+            &state.home_dir,
+            crate::plugins::EVENT_STOP,
+            &result_prompt_dir,
+            serde_json::json!({
+                "session_id": stop_session,
+                "run_id": result_run_id,
+                "stop_hook_active": false,
+            }),
+        )
+        .await;
+    }
 
     match result {
         Ok(outcome) => {

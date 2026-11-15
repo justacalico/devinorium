@@ -18,6 +18,7 @@ pub mod mcpb;
 pub mod node;
 pub mod node_client;
 pub mod plan;
+pub mod plugins;
 pub mod projects;
 pub mod providers;
 pub mod push;
@@ -229,6 +230,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::federation::router())
         .merge(api::tailscale::router())
         .merge(api::models::router())
+        .merge(api::plugins::router())
         .merge(api::providers::router())
         .merge(api::push::router())
         .merge(api::update::router())
