@@ -13,8 +13,8 @@ use axum::response::{IntoResponse, Response};
 /// Middleware: reject state-changing requests whose origin is not allowed.
 ///
 /// `allowed_origin` is an optional explicit origin (scheme://host[:port])
-/// from config. When set, the request Origin must equal it. When unset, the
-/// Origin/Referer host must match the request Host header.
+/// from config. The request is allowed when its Origin equals it or when
+/// the Origin/Referer host matches the request Host header.
 pub async fn csrf_origin_check(
     allowed_origin: Option<String>,
     req: Request,
@@ -45,11 +45,14 @@ pub async fn csrf_origin_check(
         .unwrap_or("")
         .to_string();
 
-    if let Some(ref allowed) = allowed_origin {
-        if origin_ok_explicit(req.headers(), allowed) {
-            return next.run(req).await;
-        }
-    } else if origin_ok_same_host(req.headers(), &host) {
+    // An explicitly allowed origin adds to the same-host check; it does
+    // not replace it, or configuring one would lock out the server's own
+    // same-origin frontend.
+    let explicit_ok = allowed_origin
+        .as_deref()
+        .map(|allowed| origin_ok_explicit(req.headers(), allowed))
+        .unwrap_or(false);
+    if explicit_ok || origin_ok_same_host(req.headers(), &host) {
         return next.run(req).await;
     }
 
@@ -170,6 +173,52 @@ mod tests {
             req(Method::POST, None, "example.com").headers(),
             "example.com"
         ));
+    }
+
+    async fn csrf_status(allowed: Option<String>, r: Request) -> StatusCode {
+        use tower::ServiceExt;
+        let app = axum::Router::new()
+            .route("/", axum::routing::post(|| async { StatusCode::OK }))
+            .layer(axum::middleware::from_fn(move |req, next| {
+                let allowed = allowed.clone();
+                async move { csrf_origin_check(allowed, req, next).await }
+            }));
+        app.oneshot(r).await.unwrap().status()
+    }
+
+    #[tokio::test]
+    async fn explicit_origin_still_allows_same_host() {
+        // A configured cross-origin frontend must not lock the server's
+        // own same-origin requests out.
+        let r = req(
+            Method::POST,
+            Some("https://app.example.com:7878"),
+            "app.example.com:7878",
+        );
+        let status = csrf_status(Some("https://frontend.example.com".to_string()), r).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn explicit_origin_allows_configured_cross_origin() {
+        let r = req(
+            Method::POST,
+            Some("https://frontend.example.com"),
+            "app.example.com:7878",
+        );
+        let status = csrf_status(Some("https://frontend.example.com".to_string()), r).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn explicit_origin_rejects_other_hosts() {
+        let r = req(
+            Method::POST,
+            Some("https://evil.example.com"),
+            "app.example.com",
+        );
+        let status = csrf_status(Some("https://frontend.example.com".to_string()), r).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
     }
 
     #[test]
