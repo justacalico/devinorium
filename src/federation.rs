@@ -18,16 +18,21 @@ pub const PROXY_USER_HEADER: &str = "x-devinorium-proxy-user";
 
 /// Normalize and validate a node base URL: it must be a plain http(s)
 /// origin with no userinfo, path, query, or fragment, since API paths are
-/// appended verbatim. Anything reachable from the hub is allowed by
-/// design — the pairing code and issued token are the gate, and LAN
-/// addresses are the point of the feature.
+/// appended verbatim. Plaintext http is only accepted for loopback and
+/// private-network hosts: a remote http node would expose the node token
+/// and all proxied traffic to on-path observers. LAN addresses are the
+/// point of the feature, so private ranges stay reachable.
 pub fn clean_node_base_url(raw: &str) -> Option<String> {
     let url = raw.trim().trim_end_matches('/');
     if url.len() > 512 {
         return None;
     }
     let parsed = reqwest::Url::parse(url).ok()?;
-    let ok_scheme = matches!(parsed.scheme(), "http" | "https");
+    let ok_scheme = match parsed.scheme() {
+        "https" => true,
+        "http" => plaintext_node_host(parsed.host_str()),
+        _ => false,
+    };
     let bare = parsed.path() == "/" || parsed.path().is_empty();
     if !ok_scheme
         || parsed.host_str().is_none()
@@ -40,6 +45,50 @@ pub fn clean_node_base_url(raw: &str) -> Option<String> {
         return None;
     }
     Some(url.to_string())
+}
+
+/// Hosts where plaintext http traffic stays on the local machine or LAN.
+fn plaintext_node_host(host: Option<&str>) -> bool {
+    let Some(host) = host.map(|h| h.trim_end_matches('.')) else {
+        return false;
+    };
+    let host = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return match ip {
+            std::net::IpAddr::V4(ip) => {
+                ip.is_loopback()
+                    || ip.is_private()
+                    || ip.is_link_local()
+                    // 100.64/10: CGNAT, which is also the Tailscale range.
+                    || (ip.octets()[0] == 100 && ip.octets()[1] & 0xC0 == 0x40)
+            }
+            std::net::IpAddr::V6(ip) => {
+                ip.is_loopback()
+                    || ip.is_unique_local()
+                    || ip.is_unicast_link_local()
+                    || ip
+                        .to_ipv4_mapped()
+                        .is_some_and(|v4| plaintext_node_host(Some(&v4.to_string())))
+            }
+        };
+    }
+    // Anything left with a colon is a v6 literal in some bracketing; IP
+    // rules above already decided those.
+    !host.contains(':')
+        && (host == "localhost"
+            || host.ends_with(".localhost")
+            || host.ends_with(".local")
+            || host.ends_with(".internal")
+            || host.ends_with(".lan")
+            || host.ends_with(".home.arpa")
+            // Tailnet names resolve to 100.64/10, which is WireGuard
+            // transport, not plaintext internet.
+            || host.ends_with(".ts.net")
+            // Single-label names only resolve through local search domains.
+            || !host.contains('.'))
 }
 
 /// Build the HTTP client used for node calls. There is deliberately no
@@ -91,6 +140,37 @@ mod tests {
             Some("https://node.example.com")
         );
         assert!(clean_node_base_url(" http://host:1 ").is_some());
+        for ok in [
+            "http://satellite.local:7878",
+            "http://nas.lan",
+            "http://box.internal:7878",
+            "http://gw.home.arpa",
+            "http://100.64.1.2:7878",
+            "http://node.tailnet.ts.net",
+            "http://dev.localhost:7878",
+            "http://localhost.:7878",
+            "http://[::ffff:192.168.1.1]:7878",
+        ] {
+            assert!(clean_node_base_url(ok).is_some(), "{ok}");
+        }
+    }
+
+    #[test]
+    fn clean_node_base_url_rejects_remote_plaintext() {
+        // Node tokens and all proxied traffic ride this connection, so
+        // cleartext is only acceptable where it cannot leave the LAN.
+        for bad in [
+            "http://node.example.com",
+            "http://203.0.113.9:7878",
+            "http://8.8.8.8",
+            "http://[2606:4700:4700::1111]",
+        ] {
+            assert_eq!(clean_node_base_url(bad), None, "{bad}");
+        }
+        assert_eq!(
+            clean_node_base_url("https://node.example.com").as_deref(),
+            Some("https://node.example.com")
+        );
     }
 
     #[test]

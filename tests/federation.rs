@@ -532,6 +532,43 @@ async fn hub_pair_lists_and_removes_satellite() {
 }
 
 #[tokio::test]
+async fn hub_pair_refuses_to_rebind_a_known_node_id() {
+    let sat = start_satellite().await;
+    let (state, db) = make_state().await;
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    // Seed a row for the satellite's id under a different URL, as if the
+    // node had previously been paired elsewhere.
+    db.upsert_federation_node(
+        &sat.state.node_id,
+        "old box",
+        "http://10.0.0.9:7878",
+        "0.1.0",
+        "old-token",
+    )
+    .await
+    .unwrap();
+
+    let body = format!(r#"{{"url":"{}","code":"{}"}}"#, sat.url, sat.code);
+    let resp = app
+        .oneshot(authed("POST", "/api/federation/nodes/pair", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+
+    // The conflict must not consume the satellite's single-use code.
+    assert!(!sat.state.pairing_code.read().await.is_empty());
+    let row = db
+        .get_federation_node(&sat.state.node_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.base_url, "http://10.0.0.9:7878");
+    assert_eq!(row.token.as_deref(), Some("old-token"));
+}
+
+#[tokio::test]
 async fn hub_pair_wrong_code_and_dead_node() {
     let sat = start_satellite().await;
     let (state, _db) = make_state().await;

@@ -166,8 +166,9 @@ pub struct PairNodeRequest {
 }
 
 /// Pair with a satellite: verify it is one, exchange the code for a token,
-/// and store the node. Re-pairing the same node id refreshes the row —
-/// that is how a moved or renamed satellite heals.
+/// and store the node. A node id already bound to a different URL is
+/// rejected; the owner removes the old entry first so a claimed id cannot
+/// silently rebind every project using that node.
 async fn pair_node(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -194,9 +195,12 @@ async fn pair_node(
     // so a wrong URL does not leak it to an arbitrary server.
     let info_url = format!("{base_url}/api/node/info");
     let info = match client.get(&info_url).send().await {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.json::<crate::node::NodeInfo>().await {
-                Ok(i) => i,
+        Ok(mut resp) if resp.status().is_success() => {
+            match crate::node_client::read_body_capped(&mut resp, 64 * 1024).await {
+                Ok(body) => match serde_json::from_slice::<crate::node::NodeInfo>(&body) {
+                    Ok(i) => i,
+                    Err(_) => return bad_request("target is not a devinorium satellite"),
+                },
                 Err(_) => return bad_request("target is not a devinorium satellite"),
             }
         }
@@ -205,6 +209,23 @@ async fn pair_node(
     };
     if !info.satellite {
         return bad_request("target is not running in satellite mode");
+    }
+
+    // A node id already bound to a different URL means either the
+    // satellite moved or an endpoint claimed a known id. Refuse to
+    // silently rebind every project using that node; the owner must
+    // remove the old entry first. Checked before the code exchange so a
+    // conflict does not burn the satellite's single-use pairing code.
+    if let Ok(Some(existing)) = state.db.get_federation_node(&info.node_id).await {
+        if existing.base_url != base_url {
+            return (
+                StatusCode::CONFLICT,
+                Json(ApiError::new(
+                    "a node with this id is already paired at a different address; remove it first",
+                )),
+            )
+                .into_response();
+        }
     }
 
     let pair = match NodeClient::pair(&client, &base_url, req.code.trim()).await {
