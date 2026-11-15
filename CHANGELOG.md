@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.115.3 - 2026-11-15
+#### Bug Fixes
+- 仅传 offset 的列表请求不再丢失偏移 - (0bbf62e) - HttpAnimations
+- 远端终端会话绑定创建用户 - (6ad793f) - HttpAnimations
+- 重新生成回复时保留消息附件 - (397c114) - HttpAnimations
+
+- - -
+
 ## v0.115.2 - 2026-11-15
 #### Bug Fixes
 - 限制多部分字段的累积上限 - (1c7b5c8) - HttpAnimations
