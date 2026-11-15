@@ -33,6 +33,8 @@ pub enum CloneError {
     InvalidSegment,
     #[error("clone target already exists")]
     AlreadyExists,
+    #[error("only the owner may clone local paths")]
+    Forbidden,
     #[error("clone failed: {0}")]
     CloneFailed(String),
     #[error("timeout")]
@@ -49,6 +51,7 @@ impl CloneError {
             | CloneError::NoOwner
             | CloneError::InvalidSegment => StatusCode::BAD_REQUEST,
             CloneError::AlreadyExists => StatusCode::CONFLICT,
+            CloneError::Forbidden => StatusCode::FORBIDDEN,
             CloneError::Timeout => StatusCode::GATEWAY_TIMEOUT,
             CloneError::CloneFailed(_) => StatusCode::BAD_GATEWAY,
         }
@@ -76,6 +79,8 @@ pub struct ParsedRemote {
     pub platform: String,
     pub is_gitlab: bool,
     pub is_github: bool,
+    /// True for `file://` URLs and plain absolute paths.
+    pub is_file: bool,
 }
 
 /// Clone [remote_url] into the configured clone root and create a project row.
@@ -95,6 +100,13 @@ pub async fn clone_repo(
     group_id: Option<i64>,
 ) -> Result<PathBuf, CloneError> {
     let parsed = parse_remote_url(remote_url)?;
+
+    // A local path or file:// URL clones any readable repository on disk
+    // into a project the caller can browse. Only the owner may do that;
+    // everyone else is limited to network remotes.
+    if parsed.is_file && !is_owner {
+        return Err(CloneError::Forbidden);
+    }
 
     let root = db
         .get_clone_root(user_id)
@@ -177,19 +189,28 @@ pub async fn clone_repo(
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .arg("clone")
-        .arg("--")
-        .arg(&parsed.clean_url)
-        .arg(&resolved_target);
+        .arg("--");
 
-    // Credentials ride in an env-only `http.extraHeader` scoped to the
-    // remote host, so the token never lands in remote.origin.url or
-    // .git/config where agents running in the project could read it.
-    let auth = clone_auth(git_remote, user_id, is_owner, &parsed).await;
+    // Credentials embedded in the URL are moved into an env-only
+    // `http.extraHeader` so they never reach remote.origin.url, .git/config,
+    // or the `clone: from <url>` entry in the HEAD reflog. Credentials the
+    // caller put in the URL win over the host CLI token.
+    let (clone_url, url_auth) = split_url_credentials(&parsed.clean_url);
+    let auth = match url_auth {
+        Some(header) => Some(header),
+        None => clone_auth(git_remote, user_id, is_owner, &parsed).await,
+    };
+    cmd.arg(&clone_url).arg(&resolved_target);
     if let Some(header) = &auth {
+        let scheme = if clone_url.starts_with("http://") {
+            "http"
+        } else {
+            "https"
+        };
         cmd.env("GIT_CONFIG_COUNT", "1")
             .env(
                 "GIT_CONFIG_KEY_0",
-                format!("http.https://{}/.extraHeader", parsed.host_with_port),
+                format!("http.{scheme}://{}/.extraHeader", parsed.host_with_port),
             )
             .env("GIT_CONFIG_VALUE_0", header);
     }
@@ -259,7 +280,7 @@ pub(crate) fn parse_remote_url(url: &str) -> Result<ParsedRemote, CloneError> {
         return Err(CloneError::MalformedUrl);
     }
 
-    let (_scheme, host_with_port, raw_project_path) = parse_core(&clean)?;
+    let (scheme, host_with_port, raw_project_path) = parse_core(&clean)?;
     let host = host_without_port(&host_with_port)?;
     let platform = platform_for_host(&host);
     let is_gitlab = platform == "gitlab";
@@ -295,7 +316,48 @@ pub(crate) fn parse_remote_url(url: &str) -> Result<ParsedRemote, CloneError> {
         platform,
         is_gitlab,
         is_github,
+        is_file: matches!(scheme, Scheme::File),
     })
+}
+
+/// Remove `user:pass@` from an http(s) URL. Other schemes keep their
+/// userinfo: for SSH it is the login user, not a stored credential.
+pub(crate) fn remote_url_without_userinfo(url: &str) -> String {
+    for scheme in ["https://", "http://"] {
+        if let Some(rest) = url.strip_prefix(scheme) {
+            let (authority, path) = match rest.find('/') {
+                Some(i) => (&rest[..i], &rest[i..]),
+                None => (rest, ""),
+            };
+            if let Some((_, host)) = authority.rsplit_once('@') {
+                return format!("{scheme}{host}{path}");
+            }
+            return url.to_string();
+        }
+    }
+    url.to_string()
+}
+
+/// Split userinfo credentials out of an http(s) URL into an
+/// `Authorization: Basic` header, so the clone can run against the clean
+/// URL and nothing secret lands in .git/config or the reflog.
+pub(crate) fn split_url_credentials(url: &str) -> (String, Option<String>) {
+    let sanitized = remote_url_without_userinfo(url);
+    if sanitized == url {
+        return (url.to_string(), None);
+    }
+    for scheme in ["https://", "http://"] {
+        if let Some(rest) = url.strip_prefix(scheme) {
+            let end = rest.find('/').unwrap_or(rest.len());
+            if let Some((userinfo, _)) = rest[..end].rsplit_once('@') {
+                let decoded = percent_decode_str(userinfo).decode_utf8_lossy();
+                use base64::Engine;
+                let basic = base64::engine::general_purpose::STANDARD.encode(decoded.as_bytes());
+                return (sanitized, Some(format!("Authorization: Basic {basic}")));
+            }
+        }
+    }
+    (sanitized, None)
 }
 
 fn parse_core(clean: &str) -> Result<(Scheme, String, String), CloneError> {
@@ -618,6 +680,58 @@ mod tests {
             parse_remote_url(""),
             Err(CloneError::MalformedUrl)
         ));
+    }
+
+    #[test]
+    fn flags_file_schemes() {
+        assert!(parse_remote_url("file:///home/user/repo").unwrap().is_file);
+        assert!(parse_remote_url("/home/user/repo").unwrap().is_file);
+        assert!(!parse_remote_url("https://gitlab.com/o/r").unwrap().is_file);
+        assert!(!parse_remote_url("git@gitlab.com:o/r").unwrap().is_file);
+    }
+
+    #[test]
+    fn strips_userinfo_from_http_urls() {
+        assert_eq!(
+            remote_url_without_userinfo("https://oauth2:secret@gitlab.com/o/r.git"),
+            "https://gitlab.com/o/r.git"
+        );
+        assert_eq!(
+            remote_url_without_userinfo("http://user:pass@host:8080/o/r"),
+            "http://host:8080/o/r"
+        );
+        // An '@' in the path is not userinfo.
+        assert_eq!(
+            remote_url_without_userinfo("https://host.com/a@b"),
+            "https://host.com/a@b"
+        );
+        // SSH keeps its login user.
+        assert_eq!(
+            remote_url_without_userinfo("git@gitlab.com:o/r"),
+            "git@gitlab.com:o/r"
+        );
+        assert_eq!(
+            remote_url_without_userinfo("ssh://git@gitlab.com/o/r"),
+            "ssh://git@gitlab.com/o/r"
+        );
+        // No userinfo -> unchanged.
+        assert_eq!(
+            remote_url_without_userinfo("https://gitlab.com/o/r"),
+            "https://gitlab.com/o/r"
+        );
+    }
+
+    #[test]
+    fn split_url_credentials_moves_secrets_to_header() {
+        use base64::Engine;
+        let (url, auth) = split_url_credentials("https://oauth2:t0k%40n@gitlab.com/o/r.git");
+        assert_eq!(url, "https://gitlab.com/o/r.git");
+        let expected = base64::engine::general_purpose::STANDARD.encode("oauth2:t0k@n");
+        assert_eq!(auth, Some(format!("Authorization: Basic {expected}")));
+
+        let (url, auth) = split_url_credentials("https://gitlab.com/o/r");
+        assert_eq!(url, "https://gitlab.com/o/r");
+        assert!(auth.is_none());
     }
 
     #[test]

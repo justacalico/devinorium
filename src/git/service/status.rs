@@ -53,8 +53,32 @@ impl GitService {
                 Duration::from_secs(5),
             )
             .await?;
+        // `git diff HEAD` fails outright on an unborn branch (fresh init,
+        // no commits). Diff against the empty tree instead so the summary
+        // reports every staged/tracked change as additions. `git mktree`
+        // on empty stdin yields the empty tree for the repo's own object
+        // format, which keeps this working on sha256 repositories.
+        let diff_base = match self
+            .run_with(
+                path,
+                &["rev-parse", "--verify", "-q", "HEAD"],
+                Duration::from_secs(5),
+            )
+            .await
+        {
+            Ok(_) => "HEAD".to_string(),
+            Err(_) => self
+                .run_with(path, &["mktree"], Duration::from_secs(5))
+                .await?
+                .trim()
+                .to_string(),
+        };
         let diff_out = self
-            .run_with(path, &["diff", "HEAD", "--numstat"], Duration::from_secs(5))
+            .run_with(
+                path,
+                &["diff", &diff_base, "--numstat"],
+                Duration::from_secs(5),
+            )
             .await?;
 
         Ok(parse_status(&status_out, &diff_out))

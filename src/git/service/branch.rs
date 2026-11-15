@@ -111,7 +111,10 @@ impl GitService {
         let mut cmd = self.git_cmd(path);
         cmd.arg("branch").arg(name);
         if let Some(base) = base {
-            if base.trim().is_empty() {
+            let base = base.trim();
+            // A base starting with '-' is parsed as a flag (e.g. `-D`
+            // deletes the branch); reject it rather than pass it through.
+            if base.is_empty() || base.starts_with('-') {
                 return Err(GitError::Other("invalid base branch".to_string()));
             }
             cmd.arg(base);
@@ -140,11 +143,15 @@ impl GitService {
             return Err(GitError::Other("ref name is required".to_string()));
         }
 
+        // `checkout` doubles as a path restore: a ref that also matches a
+        // tracked file would silently discard unstaged changes instead of
+        // switching branches. `switch` only accepts branches.
         let mut cmd = self.git_cmd(path);
-        cmd.arg("checkout");
+        cmd.arg("switch");
         if track {
             cmd.arg("--track");
         }
+        cmd.arg("--");
         cmd.arg(ref_name);
         self.run(&mut cmd, Duration::from_secs(10)).await?;
 
