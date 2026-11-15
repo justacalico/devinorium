@@ -1,4 +1,5 @@
 import '../api/api_client.dart';
+import '../l10n/global_l10n.dart';
 import '../merge_request/merge_request_models.dart';
 import '../state/async_value.dart';
 import 'issue_models.dart';
@@ -43,7 +44,7 @@ class GitHubIssueProvider extends IssueProvider {
     final ref = _parseRef(url);
     if (ref == null) {
       _ref = null;
-      _emit(AsyncValue.error('Not a supported GitHub issue URL'));
+      _emit(AsyncValue.error(appL10n.issueUrlUnsupported('GitHub')));
       return;
     }
 
@@ -101,7 +102,7 @@ class GitHubIssueProvider extends IssueProvider {
         milestoneJson is Map<String, dynamic> ? milestoneJson['title'] as String? : null;
 
     return IssueDetail(
-      title: _string(issue, 'title') ?? 'Untitled issue',
+      title: _string(issue, 'title') ?? appL10n.untitledIssue,
       description: _string(issue, 'body') ?? '',
       state: _string(issue, 'state') ?? '',
       iid: _int(issue, 'number') ?? ref.iid,

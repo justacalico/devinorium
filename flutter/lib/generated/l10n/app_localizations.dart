@@ -1034,6 +1034,48 @@ abstract class AppLocalizations {
   /// **'Browse'**
   String get attachSourceBrowse;
 
+  /// No description provided for @issueUrlUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Not a supported {provider} issue URL'**
+  String issueUrlUnsupported(String provider);
+
+  /// No description provided for @mergeRequestUrlUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Not a supported {provider} merge request URL'**
+  String mergeRequestUrlUnsupported(String provider);
+
+  /// No description provided for @pullRequestUrlUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Not a supported {provider} pull request URL'**
+  String pullRequestUrlUnsupported(String provider);
+
+  /// No description provided for @untitledIssue.
+  ///
+  /// In en, this message translates to:
+  /// **'Untitled issue'**
+  String get untitledIssue;
+
+  /// No description provided for @untitledMergeRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Untitled merge request'**
+  String get untitledMergeRequest;
+
+  /// No description provided for @untitledPullRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Untitled pull request'**
+  String get untitledPullRequest;
+
+  /// No description provided for @attachFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach files'**
+  String get attachFiles;
+
   /// No description provided for @removeAttachment.
   ///
   /// In en, this message translates to:

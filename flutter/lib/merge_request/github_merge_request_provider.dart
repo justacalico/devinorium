@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../l10n/global_l10n.dart';
 import 'dart:typed_data';
 
 import '../api/api_client.dart';
@@ -62,7 +63,7 @@ class GitHubMergeRequestProvider extends MergeRequestProvider {
     if (ref == null) {
       _ref = null;
       _url = null;
-      _emit(AsyncValue.error('Not a supported GitHub pull request URL'));
+      _emit(AsyncValue.error(appL10n.pullRequestUrlUnsupported('GitHub')));
       return;
     }
 
@@ -264,7 +265,7 @@ class GitHubMergeRequestProvider extends MergeRequestProvider {
     final base = pr['base'];
 
     return MergeRequestDetail(
-      title: _string(pr, 'title') ?? 'Untitled pull request',
+      title: _string(pr, 'title') ?? appL10n.untitledPullRequest,
       description: _string(pr, 'body') ?? '',
       state: _prState(pr),
       sourceBranch: head is Map<String, dynamic>

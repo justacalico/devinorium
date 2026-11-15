@@ -505,6 +505,33 @@ class AppLocalizationsZh extends AppLocalizations {
   String get attachSourceBrowse => '浏览';
 
   @override
+  String issueUrlUnsupported(String provider) {
+    return '不支持的 $provider 议题链接';
+  }
+
+  @override
+  String mergeRequestUrlUnsupported(String provider) {
+    return '不支持的 $provider 合并请求链接';
+  }
+
+  @override
+  String pullRequestUrlUnsupported(String provider) {
+    return '不支持的 $provider 拉取请求链接';
+  }
+
+  @override
+  String get untitledIssue => '未命名议题';
+
+  @override
+  String get untitledMergeRequest => '未命名合并请求';
+
+  @override
+  String get untitledPullRequest => '未命名拉取请求';
+
+  @override
+  String get attachFiles => '添加附件';
+
+  @override
   String get removeAttachment => '移除附件';
 
   @override

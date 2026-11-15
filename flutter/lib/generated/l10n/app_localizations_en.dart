@@ -516,6 +516,33 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attachSourceBrowse => 'Browse';
 
   @override
+  String issueUrlUnsupported(String provider) {
+    return 'Not a supported $provider issue URL';
+  }
+
+  @override
+  String mergeRequestUrlUnsupported(String provider) {
+    return 'Not a supported $provider merge request URL';
+  }
+
+  @override
+  String pullRequestUrlUnsupported(String provider) {
+    return 'Not a supported $provider pull request URL';
+  }
+
+  @override
+  String get untitledIssue => 'Untitled issue';
+
+  @override
+  String get untitledMergeRequest => 'Untitled merge request';
+
+  @override
+  String get untitledPullRequest => 'Untitled pull request';
+
+  @override
+  String get attachFiles => 'Attach files';
+
+  @override
   String get removeAttachment => 'Remove attachment';
 
   @override
