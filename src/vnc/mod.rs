@@ -18,7 +18,7 @@ pub use keysym::{key_chord, text_keysym};
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const IO_TIMEOUT: Duration = Duration::from_secs(15);
 /// Guard against absurd ServerInit dimensions before allocating the canvas.
-const MAX_FRAMEBUFFER_PIXELS: u32 = 64 * 1024 * 1024;
+const MAX_FRAMEBUFFER_PIXELS: u32 = 16 * 1024 * 1024;
 
 #[derive(Debug)]
 pub struct ServerInfo {
@@ -141,9 +141,6 @@ impl VncClient {
         if width == 0 || height == 0 {
             bail!("vnc server reported an empty framebuffer");
         }
-        if width as u32 * height as u32 > MAX_FRAMEBUFFER_PIXELS {
-            bail!("vnc framebuffer too large ({width}x{height})");
-        }
         // init[4..20] is the server's pixel format; init[20..24] is the
         // desktop-name length, followed by that many name bytes. A name
         // past the cap is refused outright: reading only part of it would
@@ -185,6 +182,9 @@ impl VncClient {
     /// Fetch the full framebuffer and encode it as PNG.
     pub async fn screenshot(&mut self) -> anyhow::Result<Vec<u8>> {
         let (w, h) = (self.info.width, self.info.height);
+        if w as u32 * h as u32 > MAX_FRAMEBUFFER_PIXELS {
+            bail!("vnc framebuffer too large ({w}x{h})");
+        }
         let mut req = [0u8; 10];
         req[0] = 3; // FramebufferUpdateRequest
         req[1] = 0; // non-incremental
@@ -683,12 +683,16 @@ mod tests {
         let port = scripted(|mut s| async move {
             handshake(&mut s, 1).await.unwrap();
             send_server_init(&mut s, 65535, 65535).await.unwrap();
+            let mut buf = [0u8; 64];
+            while s.read(&mut buf).await.unwrap_or(0) > 0 {}
         })
         .await;
-        let err = VncClient::connect("127.0.0.1", port, "")
+        // Connecting still works so input-only control of a huge desktop
+        // is possible; only the framebuffer allocation is refused.
+        let mut client = VncClient::connect("127.0.0.1", port, "")
             .await
-            .err()
-            .expect("absurd framebuffer should fail");
+            .expect("connect should succeed");
+        let err = client.screenshot().await.expect_err("should fail");
         assert!(err.to_string().contains("too large"));
     }
 
