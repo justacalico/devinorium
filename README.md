@@ -137,6 +137,14 @@ MCP list), so no client needs to be connected. Requires a Chrome/Chromium
 binary on the agent host; set `DEVINORIUM_BROWSER_BINARY` when it is not
 one of the usual names on PATH.
 
+## Plugins
+
+Plugins are installable bundles, compatible with the Claude Code plugin
+layout, that add skills, slash commands, MCP servers, and lifecycle
+hooks. The owner installs them from a git URL or a local directory under
+Settings → Plugins; projects can also ship prompt-only plugins under
+`.devinorium/plugins`. See [docs/plugins.md](docs/plugins.md).
+
 ## Testing
 
 ```bash
