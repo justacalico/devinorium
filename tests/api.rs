@@ -10273,6 +10273,41 @@ async fn thread_list_paginates() {
 }
 
 #[tokio::test]
+async fn list_endpoints_honor_offset_without_limit() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    for i in 0..3 {
+        let tid = make_thread(&app, &cookie, pid, &format!("T{i}")).await;
+        seed_messages(&db, &tid, 1, "msg ").await;
+    }
+
+    // An offset alone must still skip rows; a missing limit previously
+    // dropped the OFFSET clause and returned the head of the list again.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads?offset=2", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v.as_array().unwrap().len(), 1);
+
+    // One project exists; offset=1 must skip it rather than return it.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects?offset=1", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
 async fn project_threads_paginate() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;
@@ -14849,6 +14884,116 @@ impl Provider for RecordingProvider {
     async fn health_check(&self) -> anyhow::Result<()> {
         Ok(())
     }
+}
+
+struct AttachmentRecordingProvider {
+    seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<String>>>>,
+}
+
+#[async_trait]
+impl Provider for AttachmentRecordingProvider {
+    fn id(&self) -> &str {
+        "attachment-stub"
+    }
+    fn name(&self) -> &str {
+        "Attachment Stub"
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![ModelInfo {
+            id: "stub-1".into(),
+            label: "Stub One".into(),
+            cost_tier: "free".into(),
+            family: "stub".into(),
+            cost_summary: "Free".into(),
+            max_context_tokens: 200_000,
+            max_output_tokens: 32_000,
+            is_new: false,
+            is_beta: false,
+            default_reasoning_effort: None,
+            supported_reasoning_efforts: vec![],
+        }])
+    }
+    async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
+        self.seen.lock().unwrap().push(
+            req.options
+                .attachments
+                .iter()
+                .map(|a| a.filename.clone())
+                .collect(),
+        );
+        if let Some(cb) = &req.options.session_callback {
+            cb("attachment-session".into()).await;
+        }
+        Ok(StartResponse {
+            session_id: "attachment-session".into(),
+            reply: "ok".into(),
+            thinking: String::new(),
+            parts: vec![MessagePart::text("ok")],
+            title: "T".into(),
+            usage: None,
+        })
+    }
+    async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
+        self.seen.lock().unwrap().push(
+            req.options
+                .attachments
+                .iter()
+                .map(|a| a.filename.clone())
+                .collect(),
+        );
+        Ok(SendResponse {
+            reply: "ok".into(),
+            thinking: String::new(),
+            parts: vec![MessagePart::text("ok")],
+            usage: None,
+        })
+    }
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn resend_regenerate_keeps_file_attachments() {
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (mut state, db) = app_state().await;
+    state.provider =
+        Arc::new(AttachmentRecordingProvider { seen: seen.clone() }) as Arc<dyn Provider>;
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let resp = send_with_file(
+        &app,
+        &cookie,
+        &tid,
+        "with file",
+        "shot.png",
+        "image/png",
+        &[1, 2, 3],
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    body_str(resp.into_body()).await;
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+    assert_eq!(
+        seen.lock().unwrap().as_slice(),
+        &[vec!["shot.png".to_string()]]
+    );
+
+    // Regenerate on the assistant row: the replayed turn must carry the
+    // original file to the provider again.
+    let resp = resend_message(&app, &cookie, &tid, msgs[1].id, &[]).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    body_str(resp.into_body()).await;
+
+    assert_eq!(
+        seen.lock().unwrap().as_slice(),
+        &[vec!["shot.png".to_string()], vec!["shot.png".to_string()],]
+    );
 }
 
 /// POST a send with one file attachment; returns the raw response so the

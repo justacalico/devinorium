@@ -49,13 +49,13 @@ fn owner_only(user: &crate::db::UserRow) -> bool {
     user.is_owner || user.role == "owner"
 }
 
-/// Look up the node hosting a remote session. Keys are `node_id:session_id`
-/// so ids from different satellites cannot collide; lookup is by suffix
-/// since the client only carries the session id.
+/// Look up the node hosting a remote session plus the user who created it.
+/// Keys are `node_id:session_id` so ids from different satellites cannot
+/// collide; lookup is by suffix since the client only carries the session id.
 fn remote_node_for(
     state: &AppState,
     session_id: &str,
-) -> Option<crate::db::federation_nodes::FederationNodeRow> {
+) -> Option<(i64, crate::db::federation_nodes::FederationNodeRow)> {
     let suffix = format!(":{session_id}");
     state
         .remote_terminals
@@ -63,7 +63,7 @@ fn remote_node_for(
         .unwrap()
         .iter()
         .find(|(k, _)| k.ends_with(&suffix))
-        .map(|(_, n)| n.clone())
+        .map(|(_, v)| v.clone())
 }
 
 fn drop_remote_node(state: &AppState, node_id: &str, session_id: &str) {
@@ -126,7 +126,7 @@ async fn create(
                     .remote_terminals
                     .lock()
                     .unwrap()
-                    .insert(format!("{}:{}", node.id, id), node);
+                    .insert(format!("{}:{}", node.id, id), (user.id, node));
                 (StatusCode::CREATED, Json(TerminalCreated { id })).into_response()
             }
             Err(e) => crate::node_client::node_bad_gateway(e.to_string()),
@@ -174,7 +174,10 @@ async fn kill(
 
     // A session the node created gets killed on the node.
     let remote_node = remote_node_for(&state, &id);
-    if let Some(node) = remote_node {
+    if let Some((owner_id, node)) = remote_node {
+        if owner_id != user.id {
+            return forbidden();
+        }
         let Some(client) = crate::node_client::NodeClient::for_node(&state, &node) else {
             return crate::node_client::node_bad_gateway("node unreachable");
         };
@@ -245,7 +248,10 @@ async fn ws_handler(
     // A session the node created is tunneled through to it, authenticating
     // with the node token the same way the HTTP calls do.
     let remote_node = remote_node_for(&state, &id);
-    if let Some(node) = remote_node {
+    if let Some((owner_id, node)) = remote_node {
+        if owner_id != user.id {
+            return forbidden();
+        }
         let Some(client) = crate::node_client::NodeClient::for_node(&state, &node) else {
             return crate::node_client::node_bad_gateway("node unreachable");
         };

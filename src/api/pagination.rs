@@ -29,23 +29,6 @@ impl Pagination {
         let offset = self.offset.unwrap_or(0).max(0);
         (limit, offset)
     }
-
-    /// Append `LIMIT ... OFFSET ...` to a SQL string when a limit is present.
-    pub fn apply_to_sql(&self, sql: &mut String) {
-        let (limit, offset) = self.bounds();
-        if let Some(l) = limit {
-            sql.push_str(&format!(" LIMIT {l} OFFSET {offset}"));
-        }
-    }
-
-    /// Convert pagination to `(limit, offset)` for in-memory slicing.
-    pub fn to_slice(&self) -> (Option<usize>, usize) {
-        let (limit, offset) = self.bounds();
-        (
-            limit.map(|l| l as usize),
-            std::cmp::min(offset, i64::MAX) as usize,
-        )
-    }
 }
 
 #[cfg(test)]
@@ -83,24 +66,5 @@ mod tests {
             offset: Some(100),
         };
         assert_eq!(p.bounds(), (Some(Pagination::MAX_LIMIT), 100));
-    }
-
-    #[test]
-    fn sql_appends_limit_and_offset() {
-        let p = Pagination {
-            limit: Some(25),
-            offset: Some(50),
-        };
-        let mut sql = "SELECT * FROM t".to_string();
-        p.apply_to_sql(&mut sql);
-        assert_eq!(sql, "SELECT * FROM t LIMIT 25 OFFSET 50");
-    }
-
-    #[test]
-    fn sql_appends_nothing_when_unlimited() {
-        let p = Pagination::default();
-        let mut sql = "SELECT * FROM t".to_string();
-        p.apply_to_sql(&mut sql);
-        assert_eq!(sql, "SELECT * FROM t");
     }
 }

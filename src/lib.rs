@@ -87,9 +87,10 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     /// Terminal sessions hosted on a satellite node, keyed by the session id
     /// the node returned. Entries die with the session or a hub restart;
-    /// the satellite's own idle sweep reclaims strays.
+    /// the satellite's own idle sweep reclaims strays. The owning user id
+    /// rides along so one owner account cannot attach another's shell.
     pub remote_terminals:
-        Arc<std::sync::Mutex<HashMap<String, db::federation_nodes::FederationNodeRow>>>,
+        Arc<std::sync::Mutex<HashMap<String, (i64, db::federation_nodes::FederationNodeRow)>>>,
     /// Shared weighted token bucket. The global middleware charges by
     /// endpoint class; auth/login code debits extra on failures so probes
     /// cannot hide behind header tricks or rotating source IPs.

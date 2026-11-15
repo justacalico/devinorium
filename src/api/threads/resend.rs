@@ -115,7 +115,13 @@ pub(super) async fn resend(
             Err(e) => return map_err_internal(e).into_response(),
         }
     } else {
-        regen_input(&anchor, fields.mode)
+        let mut input = regen_input(&anchor, fields.mode);
+        // Regenerate replays the stored prompt; the files the original
+        // send attached belong to it just like on the edit path.
+        match reattach_stored_files(&state, &anchor, &mut input).await {
+            Ok(()) => input,
+            Err(e) => return map_err_internal(e).into_response(),
+        }
     };
     resolve_context_refs(&state, &user, &thread, &mut input).await;
     resolve_thread_refs(&state, user.id, &thread, &mut input).await;

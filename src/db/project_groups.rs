@@ -39,9 +39,9 @@ impl super::Db {
         let mut sql =
             "SELECT * FROM project_groups WHERE user_id = ? ORDER BY position ASC, id ASC"
                 .to_string();
-        if let Some(l) = limit {
-            sql.push_str(&format!(" LIMIT {l} OFFSET {offset}"));
-        }
+        // SQLite treats LIMIT -1 as unlimited; without the clause an
+        // offset-only request would silently return the head of the list.
+        sql.push_str(&format!(" LIMIT {} OFFSET {offset}", limit.unwrap_or(-1)));
         sqlx::query_as::<_, ProjectGroupRow>(&sql)
             .bind(user_id)
             .fetch_all(self.pool())
