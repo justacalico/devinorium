@@ -227,6 +227,24 @@ impl CodexProvider {
         prompt: String,
     ) -> anyhow::Result<PromptResult> {
         let (mcp_env, mcp_home) = super::mcp::codex_home_env(&options.mcp_servers).await?;
+        let result = self.run_turn(options, session, prompt, mcp_env).await;
+        // The temp CODEX_HOME only exists for the run; entries the child
+        // created under it (a new sessions dir, a rewritten auth.json)
+        // move back to the real home before the mirror is dropped. On error
+        // paths too: a failed turn must not lose a refreshed auth.
+        if let Some(ref home) = mcp_home {
+            home.sync_back().await;
+        }
+        result
+    }
+
+    async fn run_turn(
+        &self,
+        options: &SendOptions,
+        session: Option<&str>,
+        prompt: String,
+        mcp_env: Vec<(String, String)>,
+    ) -> anyhow::Result<PromptResult> {
         let server = AppServer::spawn(&self.bin, &options.working_dir, &mcp_env).await?;
         handshake(&server).await?;
 
@@ -396,13 +414,6 @@ impl CodexProvider {
         let _ = server
             .request("thread/unsubscribe", json!({ "threadId": thread_id }))
             .await;
-
-        // The temp CODEX_HOME only exists for the run; entries the child
-        // created under it (a new sessions dir, a rewritten auth.json)
-        // move back to the real home before the mirror is dropped.
-        if let Some(ref home) = mcp_home {
-            home.sync_back().await;
-        }
 
         if completed_turn.status == "failed" {
             let message = completed_turn
