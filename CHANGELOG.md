@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.115.0 - 2026-11-15
+#### Features
+- 添加插件设置页 - (0e57d7a) - HttpAnimations
+- 添加插件系统，支持技能、命令、MCP 服务器和钩子 - (9056376) - HttpAnimations
+
+- - -
+
 ## v0.114.0 - 2026-11-09
 #### Features
 - add GitHub support to git host connections - (e99288c) - HttpAnimations
