@@ -81,11 +81,23 @@ async fn resolve(
         }
     };
     let resolved = if rel.is_empty() || !Path::new(rel).is_absolute() {
-        paths::resolve_within(
-            &target,
-            Some(&root_canon),
-            std::slice::from_ref(&root_canon),
-        )
+        if tokio::fs::try_exists(&root_canon).await.unwrap_or(false) {
+            paths::resolve_within(
+                &target,
+                Some(&root_canon),
+                std::slice::from_ref(&root_canon),
+            )
+        } else {
+            // A missing root cannot be canonicalized; every tail component
+            // is nonexistent so no symlink can escape. Containment is
+            // lexical: a `..` that left the root normalizes outside it.
+            let norm = paths::normalize_lexical(&target);
+            if paths::is_within(&norm, &root_canon) {
+                Some(norm)
+            } else {
+                None
+            }
+        }
     } else {
         paths::resolve(&target, None, None)
     };
@@ -201,7 +213,7 @@ async fn read_file(
     if meta.is_dir() {
         return bad_request("path is a directory");
     }
-    if meta.len() > 4 * 1024 * 1024 {
+    if meta.len() > crate::api::files::INLINE_READ_CAP {
         return (
             StatusCode::PAYLOAD_TOO_LARGE,
             Json(crate::node::NodeError::new(
@@ -211,8 +223,23 @@ async fn read_file(
         )
             .into_response();
     }
-    let bytes = match tokio::fs::read(&target).await {
+    let bytes = match crate::api::files::read_file_capped(
+        &target,
+        crate::api::files::INLINE_READ_CAP,
+    )
+    .await
+    {
         Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(crate::node::NodeError::new(
+                    "too_large",
+                    "file too large for inline read (max 4 MiB)",
+                )),
+            )
+                .into_response();
+        }
         Err(e) => return internal(e).into_response(),
     };
     use base64::Engine;
@@ -270,6 +297,11 @@ async fn write_file(
         Ok(v) => v,
         Err(r) => return *r,
     };
+
+    // Same per-path lock as the hub: the hash check and the write must be
+    // one unit or two concurrent writers both pass the conflict check.
+    let file_lock = crate::api::files::file_write_lock(&target);
+    let _guard = file_lock.lock().await;
 
     let content_bytes = req.content.as_bytes();
     let exists = tokio::fs::try_exists(&target).await.unwrap_or(false);
@@ -562,5 +594,69 @@ async fn stat_one(state: &SatelliteState, root: Option<&str>, raw: &str) -> Stat
         canonical,
         size: meta.len(),
         modified,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::{HashMap, HashSet};
+    use tokio::sync::{Mutex, RwLock};
+
+    fn state(dir: &tempfile::TempDir) -> SatelliteState {
+        SatelliteState {
+            home_dir: dir.path().to_path_buf(),
+            node_name: "test".into(),
+            max_body_bytes: 1024,
+            pairing_code: RwLock::new(String::new()),
+            node_id: "node".into(),
+            tokens: RwLock::new(HashSet::new()),
+            runs: Mutex::new(HashMap::new()),
+            pending: Mutex::new(HashMap::new()),
+            git: Arc::new(crate::git::GitService::new()),
+            terminal_manager: crate::terminal::manager::TerminalManager::new(
+                std::time::Duration::from_secs(60),
+                std::time::Duration::from_secs(60),
+            ),
+            state_file: dir.path().join("state.json"),
+            pair_attempts: Mutex::new(HashMap::new()),
+        }
+    }
+
+    #[tokio::test]
+    async fn resolve_works_under_a_root_that_does_not_exist_yet() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state(&dir);
+        let missing_root = dir.path().join("missing").join("deep");
+        let root_str = missing_root.to_string_lossy().to_string();
+
+        let (target, _) = resolve(&state, Some(&root_str), Some("sub/file.txt"))
+            .await
+            .expect("relative path under a missing root should resolve");
+        assert!(target.starts_with(&missing_root));
+        assert_eq!(target, missing_root.join("sub/file.txt"));
+
+        let (mkdir_target, _) = resolve(&state, Some(&root_str), None)
+            .await
+            .expect("the root itself should resolve for mkdir");
+        assert_eq!(mkdir_target, missing_root);
+    }
+
+    #[tokio::test]
+    async fn resolve_rejects_traversal_under_a_missing_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state(&dir);
+        let missing_root = dir.path().join("missing");
+        let root_str = missing_root.to_string_lossy().to_string();
+
+        assert!(resolve(&state, Some(&root_str), Some("../escape.txt"))
+            .await
+            .is_err());
+        assert!(resolve(&state, Some(&root_str), Some("a/../../escape.txt"))
+            .await
+            .is_err());
+        assert!(resolve(&state, Some(&root_str), Some(".git/hooks/x"))
+            .await
+            .is_err());
     }
 }

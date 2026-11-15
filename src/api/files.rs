@@ -12,10 +12,30 @@ use std::sync::{Arc, Mutex as StdMutex, Weak};
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
 
+/// Largest file the inline read endpoints will buffer.
+pub(crate) const INLINE_READ_CAP: u64 = 4 * 1024 * 1024;
+
+/// Read `target` fully, failing with `InvalidData` once it exceeds `cap`.
+/// Reading with a limit avoids the TOCTOU between a metadata length check
+/// and an uncapped read when the file is swapped or grown mid-request.
+pub(crate) async fn read_file_capped(target: &Path, cap: u64) -> std::io::Result<Vec<u8>> {
+    use tokio::io::AsyncReadExt;
+    let file = tokio::fs::File::open(target).await?;
+    let mut bytes = Vec::new();
+    file.take(cap + 1).read_to_end(&mut bytes).await?;
+    if bytes.len() as u64 > cap {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "file exceeds read cap",
+        ));
+    }
+    Ok(bytes)
+}
+
 static FILE_WRITE_LOCKS: Lazy<StdMutex<HashMap<String, Weak<Mutex<()>>>>> =
     Lazy::new(|| StdMutex::new(HashMap::new()));
 
-fn file_write_lock(target: &Path) -> Arc<Mutex<()>> {
+pub(crate) fn file_write_lock(target: &Path) -> Arc<Mutex<()>> {
     let key = target.to_string_lossy().to_string();
     let mut map = FILE_WRITE_LOCKS.lock().unwrap();
     if let Some(lock) = map.get(&key).and_then(Weak::upgrade) {
@@ -583,7 +603,7 @@ async fn read_file(
         )
             .into_response();
     }
-    if meta.len() > 4 * 1024 * 1024 {
+    if meta.len() > INLINE_READ_CAP {
         return (
             StatusCode::PAYLOAD_TOO_LARGE,
             Json(crate::api::ApiError::new(
@@ -592,8 +612,19 @@ async fn read_file(
         )
             .into_response();
     }
-    let bytes = match tokio::fs::read(&target).await {
+    // Read capped rather than trusting the metadata length: a file swapped
+    // or grown between the checks must not be buffered whole.
+    let bytes = match read_file_capped(&target, INLINE_READ_CAP).await {
         Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(crate::api::ApiError::new(
+                    "file too large for inline read (max 4 MiB)",
+                )),
+            )
+                .into_response();
+        }
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
     use base64::Engine;
@@ -1152,4 +1183,27 @@ async fn delete(
         return crate::api::map_err_internal(e).into_response();
     }
     Json(serde_json::json!({"ok": true})).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn read_file_capped_enforces_the_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let small = dir.path().join("small.txt");
+        tokio::fs::write(&small, b"hello").await.unwrap();
+        assert_eq!(
+            read_file_capped(&small, INLINE_READ_CAP).await.unwrap(),
+            b"hello"
+        );
+
+        let big = dir.path().join("big.bin");
+        tokio::fs::write(&big, vec![0u8; INLINE_READ_CAP as usize + 1])
+            .await
+            .unwrap();
+        let err = read_file_capped(&big, INLINE_READ_CAP).await.unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    }
 }
