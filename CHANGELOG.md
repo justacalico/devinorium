@@ -2,6 +2,21 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.115.2 - 2026-11-15
+#### Bug Fixes
+- 限制多部分字段的累积上限 - (1c7b5c8) - HttpAnimations
+- 插件钩子写入与进程清理纳入超时 - (a02abe7) - HttpAnimations
+- 失败路径也回写临时 CODEX_HOME - (3f428cd) - HttpAnimations
+- 取消 ACP 会话时通知代理终止 - (f764e27) - HttpAnimations
+- 远端事件流按字节分帧并设置缓冲上限 - (e3a2030) - HttpAnimations
+- 配置允许来源时不再拒绝同源请求 - (0aabbee) - HttpAnimations
+- 修复路径解析穿过悬空符号链接逃逸根目录 - (23ed100) - HttpAnimations
+- 空仓库 status 不再因未出生的 HEAD 报错 - (aced11e) - HttpAnimations
+- 克隆时不再把凭据写入仓库配置与引用日志 - (8158d5f) - HttpAnimations
+- 分支切换改用 git switch 并校验基线参数 - (7697d6c) - HttpAnimations
+
+- - -
+
 ## v0.115.1 - 2026-11-15
 #### Bug Fixes
 - 议题与合并请求提示信息本地化 - (7d1595f) - HttpAnimations
