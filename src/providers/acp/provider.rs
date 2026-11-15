@@ -19,12 +19,12 @@ use tokio::sync::Mutex;
 
 use agent_client_protocol::{
     schema::v1::{
-        ClientCapabilities, ContentBlock, CreateElicitationRequest, CreateElicitationResponse,
-        ElicitationAction, ElicitationCapabilities, ElicitationFormCapabilities, ImageContent,
-        InitializeRequest, LoadSessionRequest, McpServer, NewSessionRequest, NewSessionResponse,
-        PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
-        RequestPermissionResponse, SessionConfigOption, SessionId, SessionModeState,
-        SessionNotification, SessionUpdate, SetSessionModeRequest, TextContent,
+        CancelNotification, ClientCapabilities, ContentBlock, CreateElicitationRequest,
+        CreateElicitationResponse, ElicitationAction, ElicitationCapabilities,
+        ElicitationFormCapabilities, ImageContent, InitializeRequest, LoadSessionRequest,
+        McpServer, NewSessionRequest, NewSessionResponse, PromptRequest, RequestPermissionOutcome,
+        RequestPermissionRequest, RequestPermissionResponse, SessionConfigOption, SessionId,
+        SessionModeState, SessionNotification, SessionUpdate, SetSessionModeRequest, TextContent,
     },
     schema::ProtocolVersion as ProtocolVersionEnum,
     AcpAgent, Agent, Client, ConnectionTo,
@@ -405,6 +405,12 @@ impl AcpProvider {
                         tokio::select! {
                             r = sent.block_task() => r,
                             _ = cancel_wait(cancel_clone) => {
+                                // `session/cancel` aborts the turn on the
+                                // agent; the dropped `sent` only retracts
+                                // this client's pending request.
+                                let _ = connection.send_notification(
+                                    CancelNotification::new(session_id.clone()),
+                                );
                                 Err(agent_client_protocol::Error::request_cancelled())
                             }
                         }
