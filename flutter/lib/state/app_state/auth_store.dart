@@ -410,6 +410,7 @@ mixin AuthStore on AppStateBase {
       loadMachines(),
       loadMcpServers(),
       loadWebAccess(),
+      loadPlugins(),
       refreshFederationNodes(),
     ];
     if (isOwner) {
@@ -867,6 +868,8 @@ mixin AuthStore on AppStateBase {
     _mcpSeq++;
     _webAccessEnabled = false;
     _webAccessSeq++;
+    _plugins = [];
+    _pluginsSeq++;
     // The node list belongs to the previous hub.
     _federationNodes = [];
     _federationSelfName = '';

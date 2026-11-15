@@ -217,6 +217,10 @@ abstract class AppStateBase extends ChangeNotifier {
   set _skillsThreadId(String? value);
   int get _skillsSeq;
   set _skillsSeq(int value);
+  List<PluginInfo> get _plugins;
+  set _plugins(List<PluginInfo> value);
+  int get _pluginsSeq;
+  set _pluginsSeq(int value);
   List<FederationNode> get _federationNodes;
   set _federationNodes(List<FederationNode> value);
   String get _federationSelfName;
@@ -431,6 +435,7 @@ abstract class AppStateBase extends ChangeNotifier {
   List<Machine> get machines;
   List<McpServerConfig> get mcpServers;
   List<Skill> get skills;
+  List<PluginInfo> get plugins;
   List<FederationNode> get federationNodes;
   String get federationSelfName;
   bool get federationSupported;
@@ -792,6 +797,11 @@ abstract class AppStateBase extends ChangeNotifier {
     Map<String, dynamic> config,
   );
   Future<void> loadSkills();
+  Future<void> loadPlugins();
+  Future<String?> installPlugin(String source);
+  Future<String?> setPluginEnabled(String name, bool enabled);
+  Future<String?> updatePlugin(String name);
+  Future<String?> deletePlugin(String name);
   Future<String?> createMachine({
     required String name,
     required String kind,

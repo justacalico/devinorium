@@ -16,6 +16,7 @@ enum SettingsTopic {
   about,
   servers,
   mcp,
+  plugins,
   webAccess,
 }
 
@@ -37,6 +38,7 @@ List<SettingsTopic> settingsTopicOrder(bool isOwner) {
     if (isOwner) SettingsTopic.audit,
     if (isOwner) SettingsTopic.mcp,
     if (isOwner) SettingsTopic.webAccess,
+    if (isOwner) SettingsTopic.plugins,
   ];
 }
 
@@ -103,6 +105,11 @@ List<({SettingsTopic topic, IconData icon, String label})> settingsTopics(
             topic: topic,
             icon: Icons.hub_outlined,
             label: l.mcpServers,
+          ),
+        SettingsTopic.plugins => (
+            topic: topic,
+            icon: Icons.extension_outlined,
+            label: l.plugins,
           ),
         SettingsTopic.webAccess => (
             topic: topic,
