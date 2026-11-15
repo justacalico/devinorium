@@ -307,7 +307,7 @@ fn default_log_limit() -> usize {
 
 /// Largest single log page; keeps `limit=999999` clients from dumping the
 /// whole history into one response.
-const MAX_LOG_LIMIT: usize = 200;
+pub(crate) const MAX_LOG_LIMIT: usize = 200;
 
 #[derive(Debug, Deserialize)]
 pub struct MergeRequestQuery {

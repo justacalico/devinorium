@@ -131,8 +131,15 @@ async fn dispatch(
             Ok(serde_json::Value::Null)
         }
         "log" => Ok(val!(
-            git.log(repo, req.limit.unwrap_or(30), req.offset, req.force)
-                .await
+            git.log(
+                repo,
+                req.limit
+                    .unwrap_or(30)
+                    .clamp(1, crate::api::git::MAX_LOG_LIMIT),
+                req.offset,
+                req.force
+            )
+            .await
         )),
         "stage" => {
             git.stage(repo, &req.paths, req.all).await?;
