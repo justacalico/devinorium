@@ -22,7 +22,7 @@ use crate::AppState;
 use super::send::SendInput;
 
 /// Maximum number of machine references accepted per message.
-const MAX_MACHINE_REFS: usize = 8;
+pub(crate) const MAX_MACHINE_REFS: usize = 8;
 
 /// Parse the `machine_ids` multipart field: a JSON array of integer ids,
 /// deduplicated in arrival order.

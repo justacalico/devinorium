@@ -147,6 +147,10 @@ const MAX_ATTACHMENT_BYTES: usize = 8 * 1024 * 1024;
 /// exhaust memory.
 const MAX_ATTACHMENTS_TOTAL_BYTES: usize = 64 * 1024 * 1024;
 
+/// Attachment count cap per message: zero-byte files slip under the byte
+/// totals, so the count needs its own bound.
+const MAX_ATTACHMENTS: usize = 32;
+
 /// Cap for one named text field. Send routes opt out of the global body
 /// limit, so without a per-field bound an authenticated client could
 /// buffer an unbounded prompt or id list in memory. 32 MiB is far above
@@ -238,6 +242,15 @@ pub(crate) async fn read_send_fields(
                     Err(e) => return Err(Box::new(crate::api::files::multipart_err(e))),
                 }
             }
+            if fields.attachments.len() >= MAX_ATTACHMENTS {
+                return Err(Box::new(
+                    (
+                        StatusCode::PAYLOAD_TOO_LARGE,
+                        Json(ApiError::new("too many attachments (max 32)")),
+                    )
+                        .into_response(),
+                ));
+            }
             attachments_total += data.len();
             if attachments_total > MAX_ATTACHMENTS_TOTAL_BYTES {
                 return Err(Box::new(
@@ -313,6 +326,17 @@ pub(crate) async fn read_send_fields(
                     ))
                 }
             }
+            // The field may repeat; the per-field cap must hold for the
+            // accumulated list too.
+            if fields.context_paths.len() > super::context_refs::MAX_CONTEXT_REFS {
+                return Err(Box::new(
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(ApiError::new("too many context paths")),
+                    )
+                        .into_response(),
+                ));
+            }
         } else if name == "referenced_thread_ids" {
             let raw = String::from_utf8_lossy(&bytes).to_string();
             match super::thread_refs::parse_referenced_thread_ids(&raw) {
@@ -323,6 +347,15 @@ pub(crate) async fn read_send_fields(
                     ))
                 }
             }
+            if fields.referenced_thread_ids.len() > super::thread_refs::MAX_THREAD_REFS {
+                return Err(Box::new(
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(ApiError::new("too many referenced threads")),
+                    )
+                        .into_response(),
+                ));
+            }
         } else if name == "machine_ids" {
             let raw = String::from_utf8_lossy(&bytes).to_string();
             match parse_machine_ids(&raw) {
@@ -332,6 +365,15 @@ pub(crate) async fn read_send_fields(
                         (StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response(),
                     ))
                 }
+            }
+            if fields.machine_ids.len() > super::machine_refs::MAX_MACHINE_REFS {
+                return Err(Box::new(
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(ApiError::new("too many machine references")),
+                    )
+                        .into_response(),
+                ));
             }
         }
     }
@@ -715,6 +757,87 @@ mod tests {
             {big}\r\n\
             --boundary--\r\n"
         );
+        let req = Request::builder()
+            .method("POST")
+            .header("content-type", "multipart/form-data; boundary=boundary")
+            .body(Body::from(body.into_bytes()))
+            .unwrap();
+        let multipart = Multipart::from_request(req, &()).await.unwrap();
+        let resp = parse_send_multipart(multipart).await.unwrap_err();
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    async fn status_for(fields: &[(&str, &str)]) -> StatusCode {
+        let mut body = String::new();
+        for (name, value) in fields {
+            body.push_str("--boundary\r\n");
+            body.push_str(&format!(
+                "Content-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+            ));
+        }
+        body.push_str("--boundary--\r\n");
+        let req = Request::builder()
+            .method("POST")
+            .header("content-type", "multipart/form-data; boundary=boundary")
+            .body(Body::from(body.into_bytes()))
+            .unwrap();
+        let multipart = Multipart::from_request(req, &()).await.unwrap();
+        match parse_send_multipart(multipart).await {
+            Ok(_) => StatusCode::OK,
+            Err(resp) => resp.status(),
+        }
+    }
+
+    #[tokio::test]
+    async fn parse_send_multipart_caps_accumulated_machine_ids() {
+        // Two fields each under the per-field cap must still hit the
+        // accumulated limit.
+        let ids = serde_json::to_string(&vec![1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
+        let fields: Vec<(&str, &str)> = vec![
+            ("prompt", "hi"),
+            ("machine_ids", &ids),
+            ("machine_ids", &ids),
+        ];
+        assert_eq!(status_for(&fields).await, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn parse_send_multipart_caps_accumulated_context_paths() {
+        let paths = serde_json::to_string(&vec![serde_json::json!({"path": "a.rs"}); 64]).unwrap();
+        let fields: Vec<(&str, &str)> = vec![
+            ("prompt", "hi"),
+            ("context_paths", &paths),
+            ("context_paths", &paths),
+        ];
+        assert_eq!(status_for(&fields).await, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn parse_send_multipart_accepts_fields_within_accumulated_cap() {
+        let ids = serde_json::to_string(&vec![1, 2]).unwrap();
+        let fields: Vec<(&str, &str)> = vec![
+            ("prompt", "hi"),
+            ("machine_ids", &ids),
+            ("machine_ids", &ids),
+        ];
+        assert_eq!(status_for(&fields).await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn parse_send_multipart_caps_attachment_count() {
+        let mut body = String::from(
+            "--boundary\r\n\
+            Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+            hi\r\n",
+        );
+        for _ in 0..33 {
+            body.push_str(
+                "--boundary\r\n\
+                Content-Disposition: form-data; name=\"attachment\"; filename=\"z.txt\"\r\n\r\n\
+                \r\n",
+            );
+        }
+        body.push_str("--boundary--\r\n");
         let req = Request::builder()
             .method("POST")
             .header("content-type", "multipart/form-data; boundary=boundary")
