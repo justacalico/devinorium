@@ -118,7 +118,10 @@ impl GitService {
         if !is_safe_branch_name(branch_name) {
             return Err(GitError::Other("invalid branch name".to_string()));
         }
-        if base.trim().is_empty() {
+        let base = base.trim();
+        // A base starting with '-' is parsed as a flag; reject it rather
+        // than let it inject options into `git worktree add`.
+        if base.is_empty() || base.starts_with('-') {
             return Err(GitError::Other("base branch is required".to_string()));
         }
 
