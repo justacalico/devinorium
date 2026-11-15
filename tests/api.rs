@@ -16748,3 +16748,205 @@ async fn thread_link_rejects_cross_host_provider_mix() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+// ---- Plugins ----
+
+fn write_test_plugin(root: &Path, name: &str) {
+    let dir = root.join(name);
+    std::fs::create_dir_all(dir.join("commands")).unwrap();
+    std::fs::write(
+        dir.join("plugin.json"),
+        format!(r#"{{"name":"{name}","version":"1.0.0","description":"test plugin"}}"#),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("commands").join("hi.md"),
+        "---\ndescription: hi\n---\nhi body\n",
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn plugins_lifecycle_install_list_toggle_uninstall() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let src = tempfile::tempdir().unwrap();
+    write_test_plugin(src.path(), "demo");
+
+    // Nothing installed yet.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/plugins", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(body["plugins"].as_array().unwrap().len(), 0);
+
+    // Install from a local path links the directory.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/plugins/install",
+            &cookie,
+            &format!(
+                r#"{{"source":{}}}"#,
+                serde_json::to_string(&src.path().join("demo").to_string_lossy().to_string())
+                    .unwrap()
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(body["installed"], serde_json::json!(["demo"]));
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/plugins", &cookie, ""))
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let plugin = &body["plugins"][0];
+    assert_eq!(plugin["name"], "demo");
+    assert_eq!(plugin["enabled"], true);
+    assert_eq!(plugin["manageable"], true);
+    assert_eq!(plugin["commands"], serde_json::json!(["hi"]));
+
+    // Toggle off, then back on.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/plugins/demo/enabled",
+            &cookie,
+            r#"{"enabled":false}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/plugins", &cookie, ""))
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(body["plugins"][0]["enabled"], false);
+
+    // Update on a non-git install fails cleanly.
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/plugins/demo/update", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Uninstall removes it; the linked source survives.
+    let resp = app
+        .clone()
+        .oneshot(authed("DELETE", "/api/plugins/demo", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(src.path().join("demo/commands/hi.md").exists());
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/plugins", &cookie, ""))
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(body["plugins"].as_array().unwrap().len(), 0);
+    let _ = home;
+}
+
+#[tokio::test]
+async fn plugins_endpoints_are_owner_only() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    create_user(&app, &cookie, "bob", "bobsecret123").await;
+    let bob_cookie = login_as(&app, "bob", "bobsecret123").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/plugins", &bob_cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    for (method, uri) in [
+        ("POST", "/api/plugins/install"),
+        ("PUT", "/api/plugins/demo/enabled"),
+        ("POST", "/api/plugins/demo/update"),
+        ("DELETE", "/api/plugins/demo"),
+    ] {
+        let body = if method == "PUT" {
+            r#"{"enabled":true}"#
+        } else if method == "POST" && uri == "/api/plugins/install" {
+            r#"{"source":"/tmp/x"}"#
+        } else {
+            ""
+        };
+        let resp = app
+            .clone()
+            .oneshot(authed(method, uri, &bob_cookie, body))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{method} {uri}");
+    }
+}
+
+#[tokio::test]
+async fn plugins_list_includes_project_scope_with_cwd() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let proj = tempfile::tempdir().unwrap();
+    write_test_plugin(&proj.path().join(".devinorium/plugins"), "projplug");
+
+    let uri = format!(
+        "/api/plugins?cwd={}",
+        urlencoding(&proj.path().to_string_lossy())
+    );
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &uri, &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let plugin = &body["plugins"][0];
+    assert_eq!(plugin["name"], "projplug");
+    assert_eq!(plugin["source"], "project");
+    assert_eq!(plugin["manageable"], false);
+
+    // A missing cwd is rejected rather than silently ignored.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/plugins?cwd=/nonexistent/xyz",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let _ = home;
+}
+
+fn urlencoding(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~') {
+                c.to_string()
+            } else {
+                format!("%{:02X}", c as u32)
+            }
+        })
+        .collect()
+}

@@ -438,6 +438,7 @@ pub(crate) async fn call_provider(
                 &thread.provider_id,
                 &command,
                 &state.config.default_model,
+                user.is_owner,
             ))
         }
         None => state.provider_for(user, &thread.provider_id),
@@ -480,6 +481,12 @@ pub(crate) async fn call_provider(
         Vec::new()
     };
     crate::mcp::inject_builtin_browser(&mut mcp_servers, user.is_owner && user.web_access_enabled);
+    // User-scope plugin `.mcp.json` servers merge under the same owner
+    // gate: a stdio entry is code execution as the server user. Plugins on
+    // a satellite merge theirs node-side, gated by the wire flag.
+    if user.is_owner {
+        crate::plugins::merge_plugin_mcp(&state.config.home_dir, &mut mcp_servers).await;
+    }
 
     let options = SendOptions {
         model: thread.model.clone(),
@@ -505,24 +512,66 @@ pub(crate) async fn call_provider(
         mcp_servers,
     };
 
-    // A leading `/skill args` reaches the Devin CLI verbatim — its ACP
+    // A leading `/skill args` reaches the Devin CLI verbatim - its ACP
     // server resolves slash commands natively. Other providers get the
     // skill body expanded inline so the workflow still applies. Expansion
     // runs on the user's text alone so the context/machine blocks appended
     // below land after the skill body instead of inside its args. For
     // node-bound threads the skill files live on the satellite, so the
     // wire request carries an expand flag instead of expanding here.
-    let user_prompt =
-        if node.is_some() || thread.provider_id == crate::providers::acp::AgentKind::Devin.id() {
-            input.prompt.clone()
-        } else {
-            crate::skills::expand_skill_prompt(
-                &input.prompt,
-                &options.working_dir,
+    // Devin resolves project/user skills natively, so only plugin-provided
+    // commands expand inline for it. On a node-bound thread the satellite
+    // runs its own hooks and expansion; the hub only ships the prompt.
+    let mut user_prompt = if node.is_some() {
+        input.prompt.clone()
+    } else if thread.provider_id == crate::providers::acp::AgentKind::Devin.id() {
+        crate::skills::expand_plugin_prompt(
+            &input.prompt,
+            &options.working_dir,
+            &state.config.home_dir,
+        )
+        .await
+    } else {
+        crate::skills::expand_skill_prompt(
+            &input.prompt,
+            &options.working_dir,
+            &state.config.home_dir,
+        )
+        .await
+    };
+
+    // Plugin hooks fire where the agent runs; node-bound threads get the
+    // satellite's hooks instead (its plugins live on its filesystem).
+    // Like plugin MCP servers, hooks are shell commands as the server
+    // user, so they only fire for owner-initiated runs.
+    if node.is_none() && user.is_owner {
+        let outcome = crate::plugins::run_hooks(
+            &state.config.home_dir,
+            crate::plugins::EVENT_PROMPT_SUBMIT,
+            &options.working_dir,
+            serde_json::json!({
+                "session_id": thread.devin_session_id.as_deref().unwrap_or(""),
+                "thread_id": thread.id,
+                "prompt": user_prompt,
+            }),
+        )
+        .await;
+        if let Some(reason) = outcome.block {
+            anyhow::bail!("prompt blocked by plugin hook: {reason}");
+        }
+        crate::plugins::append_context(&mut user_prompt, &outcome.context);
+        if thread.devin_session_id.is_none() {
+            let outcome = crate::plugins::run_hooks(
                 &state.config.home_dir,
+                crate::plugins::EVENT_SESSION_START,
+                &options.working_dir,
+                serde_json::json!({ "thread_id": thread.id }),
             )
-            .await
-        };
+            .await;
+            crate::plugins::append_context(&mut user_prompt, &outcome.context);
+        }
+    }
+
     let prompt = prompt_with_machine_refs(
         &prompt_with_thread_refs(
             &prompt_with_refs(&user_prompt, &input.context_refs),
@@ -532,7 +581,10 @@ pub(crate) async fn call_provider(
         input.machine_token.as_deref(),
         &state.agent_base_url(),
     );
-    if let Some(sid) = thread.devin_session_id.as_ref() {
+    // `options` moves into the request; the Stop hook below still needs
+    // the working dir afterwards.
+    let hook_dir = options.working_dir.clone();
+    let result = if let Some(sid) = thread.devin_session_id.as_ref() {
         provider
             .send(SendRequest {
                 session_id: sid.clone(),
@@ -556,7 +608,29 @@ pub(crate) async fn call_provider(
                 parts: r.parts,
                 usage: r.usage,
             })
+    };
+    if node.is_none() && user.is_owner {
+        // A Stop hook cannot block the turn that already finished; its
+        // outcome is a side channel only (notifications, bookkeeping).
+        let stop_session = result
+            .as_ref()
+            .ok()
+            .and_then(|r| r.new_session_id.as_deref())
+            .or(thread.devin_session_id.as_deref())
+            .unwrap_or("");
+        let _ = crate::plugins::run_hooks(
+            &state.config.home_dir,
+            crate::plugins::EVENT_STOP,
+            &hook_dir,
+            serde_json::json!({
+                "session_id": stop_session,
+                "thread_id": thread.id,
+                "stop_hook_active": false,
+            }),
+        )
+        .await;
     }
+    result
 }
 
 #[cfg(test)]

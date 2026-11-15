@@ -3854,6 +3854,78 @@ abstract class AppLocalizations {
   /// **'Allow agents to use the web'**
   String get webAccessToggle;
 
+  /// Settings topic and section title for plugins
+  ///
+  /// In en, this message translates to:
+  /// **'Plugins'**
+  String get plugins;
+
+  /// Explanation shown above the plugin list
+  ///
+  /// In en, this message translates to:
+  /// **'Plugins bundle skills, slash commands, MCP servers, and shell hooks. Install from a git URL or a local directory. Plugins run shell commands on this server, so only install sources you trust.'**
+  String get pluginsHint;
+
+  /// Shown when no plugins exist
+  ///
+  /// In en, this message translates to:
+  /// **'No plugins installed.'**
+  String get pluginsEmpty;
+
+  /// Hint in the plugin install source field
+  ///
+  /// In en, this message translates to:
+  /// **'Git URL or local directory'**
+  String get pluginInstallField;
+
+  /// Button label for installing a plugin
+  ///
+  /// In en, this message translates to:
+  /// **'Install'**
+  String get install;
+
+  /// Button label for uninstalling a plugin
+  ///
+  /// In en, this message translates to:
+  /// **'Uninstall'**
+  String get uninstall;
+
+  /// Tooltip for the plugin update button
+  ///
+  /// In en, this message translates to:
+  /// **'Update'**
+  String get pluginUpdate;
+
+  /// Confirmation before uninstalling a plugin
+  ///
+  /// In en, this message translates to:
+  /// **'Uninstall \"{name}\"? Its skills, commands, MCP servers, and hooks will stop working.'**
+  String pluginUninstallConfirm(String name);
+
+  /// Skill count in a plugin summary line
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 skill} other{{count} skills}}'**
+  String pluginSkills(int count);
+
+  /// Command count in a plugin summary line
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 command} other{{count} commands}}'**
+  String pluginCommands(int count);
+
+  /// MCP server count in a plugin summary line
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 MCP server} other{{count} MCP servers}}'**
+  String pluginMcpServers(int count);
+
+  /// Hook count in a plugin summary line
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 hook} other{{count} hooks}}'**
+  String pluginHooks(int count);
+
   /// Explanation shown above the MCP server list
   ///
   /// In en, this message translates to:

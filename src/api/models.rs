@@ -83,6 +83,7 @@ async fn list(
                 provider_id,
                 &command,
                 &state.config.default_model,
+                user.is_owner,
             ))
         }
         None => state.provider_for(&user, provider_id),

@@ -1430,6 +1430,45 @@ class ApiService {
     ];
   }
 
+  // ---- Plugins ----
+
+  /// Plugins installed on the server (owner only). Pass a working
+  /// directory to also list the project-scope plugins under
+  /// `.devinorium/plugins` there.
+  Future<List<PluginInfo>> plugins({String? cwd}) async {
+    final uri = cwd == null || cwd.isEmpty
+        ? '/api/plugins'
+        : '/api/plugins?cwd=${Uri.encodeQueryComponent(cwd)}';
+    final j = await _client.get(uri);
+    return [
+      for (final p in (j['plugins'] as List? ?? const []))
+        PluginInfo.fromJson(p as Map<String, dynamic>),
+    ];
+  }
+
+  /// Install plugin(s) from a git URL or a local directory path. Returns
+  /// the installed plugin names.
+  Future<List<String>> installPlugin(String source) async {
+    final j = await _client.post('/api/plugins/install', {'source': source});
+    return [
+      for (final n in (j['installed'] as List? ?? const []))
+        if (n is String) n,
+    ];
+  }
+
+  /// Toggle a user-scope plugin on or off.
+  Future<void> setPluginEnabled(String name, bool enabled) =>
+      _client.put('/api/plugins/$name/enabled', {'enabled': enabled});
+
+  /// `git pull` a git-installed plugin. Returns the pull output.
+  Future<String> updatePlugin(String name) async {
+    final j = await _client.post('/api/plugins/$name/update', const {});
+    return j['output'] as String? ?? '';
+  }
+
+  /// Remove a user-scope plugin from the server.
+  Future<void> deletePlugin(String name) => _client.delete('/api/plugins/$name');
+
   // ---- Federation ----
 
   /// Satellite nodes paired with this hub (owner only).

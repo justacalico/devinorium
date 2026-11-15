@@ -12,6 +12,7 @@ pub mod machine_control;
 pub mod machines;
 pub mod models;
 pub mod pagination;
+pub mod plugins;
 pub mod project_groups;
 pub mod projects;
 pub mod providers;

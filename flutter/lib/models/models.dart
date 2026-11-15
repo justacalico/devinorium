@@ -10,6 +10,7 @@ export 'json_utils.dart';
 export 'machine.dart';
 export 'mcp_server.dart';
 export 'mcpb.dart';
+export 'plugin.dart';
 export 'skill.dart';
 export 'messages.dart';
 export 'permissions.dart';

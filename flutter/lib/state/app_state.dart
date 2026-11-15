@@ -63,6 +63,7 @@ part 'app_state/settings_store.dart';
 part 'app_state/tailscale_store.dart';
 part 'app_state/machines_store.dart';
 part 'app_state/mcp_store.dart';
+part 'app_state/plugins_store.dart';
 part 'app_state/node_store.dart';
 part 'app_state/version_store.dart';
 part 'app_state/editor_store.dart';
@@ -122,6 +123,7 @@ class AppState extends AppStateBase
         TailscaleStore,
         MachinesStore,
         McpStore,
+        PluginsStore,
         NodeStore,
         VersionStore,
         EditorStore {

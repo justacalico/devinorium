@@ -32,7 +32,7 @@ pub struct NodeInfo {
 }
 
 /// `POST /api/node/pair` request. `code` is the code the satellite printed
-/// at startup; `name` lets the hub suggest nothing — the satellite keeps
+/// at startup; `name` lets the hub suggest nothing - the satellite keeps
 /// its own configured name.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairRequest {
@@ -92,6 +92,12 @@ pub struct WireSendOptions {
     /// hub does locally for non-Devin providers).
     #[serde(default)]
     pub expand_skills: bool,
+    /// When true the satellite applies its user-scope plugin features:
+    /// `.mcp.json` servers merge into the run and `hooks.json` commands
+    /// fire. Set only for owner-initiated runs, matching the hub's local
+    /// gate on plugin MCP servers and hooks.
+    #[serde(default)]
+    pub owner_plugins: bool,
 }
 
 /// `POST /api/node/run` request. `session_id` present means "continue the

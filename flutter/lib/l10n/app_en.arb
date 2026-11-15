@@ -1658,6 +1658,79 @@
   "@webAccessToggle": {
     "description": "Label of the switch that enables the agent web browser"
   },
+  "plugins": "Plugins",
+  "@plugins": {
+    "description": "Settings topic and section title for plugins"
+  },
+  "pluginsHint": "Plugins bundle skills, slash commands, MCP servers, and shell hooks. Install from a git URL or a local directory. Plugins run shell commands on this server, so only install sources you trust.",
+  "@pluginsHint": {
+    "description": "Explanation shown above the plugin list"
+  },
+  "pluginsEmpty": "No plugins installed.",
+  "@pluginsEmpty": {
+    "description": "Shown when no plugins exist"
+  },
+  "pluginInstallField": "Git URL or local directory",
+  "@pluginInstallField": {
+    "description": "Hint in the plugin install source field"
+  },
+  "install": "Install",
+  "@install": {
+    "description": "Button label for installing a plugin"
+  },
+  "uninstall": "Uninstall",
+  "@uninstall": {
+    "description": "Button label for uninstalling a plugin"
+  },
+  "pluginUpdate": "Update",
+  "@pluginUpdate": {
+    "description": "Tooltip for the plugin update button"
+  },
+  "pluginUninstallConfirm": "Uninstall \"{name}\"? Its skills, commands, MCP servers, and hooks will stop working.",
+  "@pluginUninstallConfirm": {
+    "description": "Confirmation before uninstalling a plugin",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pluginSkills": "{count, plural, =1{1 skill} other{{count} skills}}",
+  "@pluginSkills": {
+    "description": "Skill count in a plugin summary line",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pluginCommands": "{count, plural, =1{1 command} other{{count} commands}}",
+  "@pluginCommands": {
+    "description": "Command count in a plugin summary line",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pluginMcpServers": "{count, plural, =1{1 MCP server} other{{count} MCP servers}}",
+  "@pluginMcpServers": {
+    "description": "MCP server count in a plugin summary line",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pluginHooks": "{count, plural, =1{1 hook} other{{count} hooks}}",
+  "@pluginHooks": {
+    "description": "Hook count in a plugin summary line",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "mcpServersHint": "Tool servers agents connect to when a run starts. stdio runs a command; HTTP and SSE connect to a URL. Enabled servers apply to every provider.",
   "@mcpServersHint": {
     "description": "Explanation shown above the MCP server list"

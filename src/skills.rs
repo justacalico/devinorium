@@ -151,9 +151,10 @@ async fn read_skill(path: &Path, dir_name: &str, source: &str) -> Option<Skill> 
     Some(Skill { info, body })
 }
 
-/// Scan every skills directory under `cwd` and `home`, deduplicating by
-/// name (first hit wins, so project skills shadow user ones) and sorting
-/// the result alphabetically for a stable picker order.
+/// Scan every skills directory under `cwd` and `home`, then every plugin's
+/// `skills/` and `commands/` directories, deduplicating by name (first hit
+/// wins, so project skills shadow user ones and both shadow plugins) and
+/// sorting the result alphabetically for a stable picker order.
 pub async fn discover_skills(cwd: &Path, home: &Path) -> Vec<Skill> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
@@ -190,6 +191,20 @@ pub async fn discover_skills(cwd: &Path, home: &Path) -> Vec<Skill> {
             }
         }
     }
+    for plugin in crate::plugins::discover_plugins(Some(cwd), home).await {
+        if !plugin.enabled {
+            continue;
+        }
+        let source = format!("plugin:{}", plugin.name);
+        for file in crate::plugins::skill_files(&plugin).await {
+            let Some(skill) = read_skill(&file.path, &file.fallback_name, &source).await else {
+                continue;
+            };
+            if seen.insert(skill.info.name.clone()) {
+                out.push(skill);
+            }
+        }
+    }
     out.sort_by(|a, b| a.info.name.cmp(&b.info.name));
     out
 }
@@ -206,29 +221,55 @@ pub fn split_slash_command(prompt: &str) -> Option<(&str, &str)> {
     Some((name, rest[end..].trim()))
 }
 
+/// The prompt a skill expands to for `args`, or `None` when its body is
+/// empty. `$ARGUMENTS` in the body is replaced with the args; a body
+/// without the placeholder gets the args appended.
+fn apply_skill_body(skill: &Skill, args: &str) -> Option<String> {
+    let body = skill.body.trim();
+    if body.is_empty() {
+        return None;
+    }
+    Some(if args.is_empty() {
+        body.to_string()
+    } else if body.contains("$ARGUMENTS") {
+        body.replace("$ARGUMENTS", args)
+    } else {
+        format!("{body}\n\n{args}")
+    })
+}
+
 /// Expand a leading `/name args` into the skill's prompt body for providers
-/// without native slash commands. `$ARGUMENTS` in the body is replaced with
-/// the args; a body without the placeholder gets the args appended. Unknown
-/// names pass through untouched.
+/// without native slash commands. Unknown names pass through untouched.
 pub async fn expand_skill_prompt(prompt: &str, cwd: &Path, home: &Path) -> String {
     let Some((name, args)) = split_slash_command(prompt) else {
         return prompt.to_string();
     };
     let skills = discover_skills(cwd, home).await;
-    let Some(skill) = skills.iter().find(|s| s.info.name == name) else {
+    match skills
+        .iter()
+        .find(|s| s.info.name == name)
+        .and_then(|s| apply_skill_body(s, args))
+    {
+        Some(expanded) => expanded,
+        None => prompt.to_string(),
+    }
+}
+
+/// Expand a leading `/name args` only when it resolves to a
+/// plugin-provided skill or command. Devin CLI resolves project and user
+/// skills natively, so those must stay verbatim for it — but a plugin
+/// command only exists in Devinorium's picker, so it has to be inlined
+/// here for the agent to see it at all.
+pub async fn expand_plugin_prompt(prompt: &str, cwd: &Path, home: &Path) -> String {
+    let Some((name, args)) = split_slash_command(prompt) else {
         return prompt.to_string();
     };
-    let body = skill.body.trim();
-    if body.is_empty() {
-        return prompt.to_string();
-    }
-    if args.is_empty() {
-        return body.to_string();
-    }
-    if body.contains("$ARGUMENTS") {
-        body.replace("$ARGUMENTS", args)
-    } else {
-        format!("{body}\n\n{args}")
+    let skills = discover_skills(cwd, home).await;
+    match skills.iter().find(|s| s.info.name == name) {
+        Some(s) if s.info.source.starts_with("plugin:") => {
+            apply_skill_body(s, args).unwrap_or_else(|| prompt.to_string())
+        }
+        _ => prompt.to_string(),
     }
 }
 
@@ -413,5 +454,77 @@ mod tests {
             "/not-a-skill x"
         );
         assert_eq!(expand_skill_prompt("hello", cwd, cwd).await, "hello");
+    }
+
+    #[tokio::test]
+    async fn discover_includes_plugin_skills_and_commands() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().join("proj");
+        let home = root.path().join("home");
+        let plugin = home.join(".config/devinorium/plugins/demo");
+        write_skill(
+            &plugin,
+            "skills/rev",
+            "SKILL.md",
+            "---\nname: rev\ndescription: plugin skill\n---\nrev body\n",
+        );
+        write_skill(
+            &plugin,
+            "commands",
+            "gen.md",
+            "---\ndescription: gen it\n---\ngen body\n",
+        );
+        // The project skill keeps precedence over a same-named plugin one.
+        write_skill(
+            &cwd,
+            ".devin/skills/rev",
+            "SKILL.md",
+            "---\nname: rev\ndescription: project wins\n---\nx\n",
+        );
+        write_skill(
+            &cwd,
+            ".devinorium/plugins/proj/commands",
+            "pc.md",
+            "---\ndescription: pc\n---\npc body\n",
+        );
+
+        let skills = discover_skills(&cwd, &home).await;
+        let names: Vec<&str> = skills.iter().map(|s| s.info.name.as_str()).collect();
+        assert_eq!(names, ["gen", "pc", "rev"]);
+        let rev = skills.iter().find(|s| s.info.name == "rev").unwrap();
+        assert_eq!(rev.info.description, "project wins");
+        let gen = skills.iter().find(|s| s.info.name == "gen").unwrap();
+        assert_eq!(gen.info.source, "plugin:demo");
+        let pc = skills.iter().find(|s| s.info.name == "pc").unwrap();
+        assert_eq!(pc.info.source, "plugin:proj");
+    }
+
+    #[tokio::test]
+    async fn expand_plugin_prompt_only_expands_plugin_sourced() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path();
+        write_skill(
+            cwd,
+            ".devin/skills/review",
+            "SKILL.md",
+            "---\nname: review\n---\nReview body\n",
+        );
+        write_skill(
+            cwd,
+            ".config/devinorium/plugins/demo/commands",
+            "gen.md",
+            "---\nname: gen\n---\nGen $ARGUMENTS\n",
+        );
+        // The native skill stays verbatim for Devin; the plugin command
+        // expands because nothing else can see it.
+        assert_eq!(
+            expand_plugin_prompt("/review x", cwd, cwd).await,
+            "/review x"
+        );
+        assert_eq!(
+            expand_plugin_prompt("/gen widget", cwd, cwd).await,
+            "Gen widget"
+        );
+        assert_eq!(expand_plugin_prompt("hello", cwd, cwd).await, "hello");
     }
 }

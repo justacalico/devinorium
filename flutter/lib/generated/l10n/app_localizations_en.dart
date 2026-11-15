@@ -2183,6 +2183,77 @@ class AppLocalizationsEn extends AppLocalizations {
   String get webAccessToggle => 'Allow agents to use the web';
 
   @override
+  String get plugins => 'Plugins';
+
+  @override
+  String get pluginsHint =>
+      'Plugins bundle skills, slash commands, MCP servers, and shell hooks. Install from a git URL or a local directory. Plugins run shell commands on this server, so only install sources you trust.';
+
+  @override
+  String get pluginsEmpty => 'No plugins installed.';
+
+  @override
+  String get pluginInstallField => 'Git URL or local directory';
+
+  @override
+  String get install => 'Install';
+
+  @override
+  String get uninstall => 'Uninstall';
+
+  @override
+  String get pluginUpdate => 'Update';
+
+  @override
+  String pluginUninstallConfirm(String name) {
+    return 'Uninstall \"$name\"? Its skills, commands, MCP servers, and hooks will stop working.';
+  }
+
+  @override
+  String pluginSkills(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count skills',
+      one: '1 skill',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String pluginCommands(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count commands',
+      one: '1 command',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String pluginMcpServers(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count MCP servers',
+      one: '1 MCP server',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String pluginHooks(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hooks',
+      one: '1 hook',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get mcpServersHint =>
       'Tool servers agents connect to when a run starts. stdio runs a command; HTTP and SSE connect to a URL. Enabled servers apply to every provider.';
 

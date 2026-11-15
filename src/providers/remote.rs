@@ -2,7 +2,7 @@
 //!
 //! [`RemoteProvider`] implements the same [`Provider`] trait as the local
 //! providers, so the whole run pipeline (parts streaming, permission and
-//! ask prompts, usage accounting, stop) works unchanged — only the process
+//! ask prompts, usage accounting, stop) works unchanged - only the process
 //! executing the agent lives on another machine. The satellite holds no
 //! state: each call ships the prompt, options and provider identity over
 //! `POST /api/node/run`, reads back a [`NodeEvent`] SSE stream, and answers
@@ -31,19 +31,31 @@ pub struct RemoteProvider {
     provider_id: String,
     command: String,
     default_model: String,
+    /// Whether the satellite may apply its plugins' hooks and `.mcp.json`
+    /// servers - the same owner-only gate the hub applies locally,
+    /// carried over the wire because the satellite cannot see the hub's
+    /// user row.
+    owner_plugins: bool,
 }
 
 impl RemoteProvider {
-    pub fn new(client: NodeClient, provider_id: &str, command: &str, default_model: &str) -> Self {
+    pub fn new(
+        client: NodeClient,
+        provider_id: &str,
+        command: &str,
+        default_model: &str,
+        owner_plugins: bool,
+    ) -> Self {
         Self {
             client,
             provider_id: provider_id.to_string(),
             command: command.to_string(),
             default_model: default_model.to_string(),
+            owner_plugins,
         }
     }
 
-    fn wire_options(options: &SendOptions, expand_skills: bool) -> WireSendOptions {
+    fn wire_options(&self, options: &SendOptions, expand_skills: bool) -> WireSendOptions {
         use base64::Engine;
         WireSendOptions {
             model: options.model.clone(),
@@ -64,6 +76,7 @@ impl RemoteProvider {
             max_output_tokens: options.max_output_tokens,
             mcp_servers: options.mcp_servers.clone(),
             expand_skills,
+            owner_plugins: self.owner_plugins,
         }
     }
 
@@ -88,7 +101,7 @@ impl RemoteProvider {
             // Devin resolves slash commands itself; every other provider
             // gets the satellite-side skill expansion the hub would have
             // applied locally.
-            options: Self::wire_options(
+            options: self.wire_options(
                 options,
                 self.provider_id != crate::providers::acp::AgentKind::Devin.id(),
             ),
@@ -235,7 +248,7 @@ enum EventEffect {
 /// Pop one complete `data:` SSE payload off the buffer. Satellite events
 /// are single-line JSON, so an event ends at a blank line. Comment blocks
 /// (keep-alives) and non-data lines are skipped rather than ending the
-/// stream — returning `None` must mean "no complete block yet", never
+/// stream - returning `None` must mean "no complete block yet", never
 /// "the next block was not an event", or a keep-alive flushed right before
 /// `done` would swallow the result.
 fn take_sse_event(buf: &mut String) -> Option<NodeEvent> {
@@ -260,7 +273,7 @@ fn take_sse_event(buf: &mut String) -> Option<NodeEvent> {
 impl Provider for RemoteProvider {
     fn id(&self) -> &str {
         // Leak-free: the id lives in the struct, but `Provider::id` needs
-        // &'static — return a static for the known provider ids.
+        // &'static - return a static for the known provider ids.
         match self.provider_id.as_str() {
             "devin-cli" => "devin-cli",
             "opencode" => "opencode",

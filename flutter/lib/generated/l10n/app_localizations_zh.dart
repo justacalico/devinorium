@@ -2092,6 +2092,53 @@ class AppLocalizationsZh extends AppLocalizations {
   String get webAccessToggle => '允许代理访问网页';
 
   @override
+  String get plugins => '插件';
+
+  @override
+  String get pluginsHint =>
+      '插件可以打包技能、斜杠命令、MCP 服务器和 Shell 钩子。支持从 Git 地址或本地目录安装。插件会在本服务器上执行 Shell 命令，请只安装可信来源。';
+
+  @override
+  String get pluginsEmpty => '尚未安装任何插件。';
+
+  @override
+  String get pluginInstallField => 'Git 地址或本地目录';
+
+  @override
+  String get install => '安装';
+
+  @override
+  String get uninstall => '卸载';
+
+  @override
+  String get pluginUpdate => '更新';
+
+  @override
+  String pluginUninstallConfirm(String name) {
+    return '卸载「$name」？其技能、命令、MCP 服务器和钩子将停止工作。';
+  }
+
+  @override
+  String pluginSkills(int count) {
+    return '$count 个技能';
+  }
+
+  @override
+  String pluginCommands(int count) {
+    return '$count 个命令';
+  }
+
+  @override
+  String pluginMcpServers(int count) {
+    return '$count 个 MCP 服务器';
+  }
+
+  @override
+  String pluginHooks(int count) {
+    return '$count 个钩子';
+  }
+
+  @override
   String get mcpServersHint =>
       '运行开始时代理连接的工具服务器。stdio 运行本地命令，HTTP 和 SSE 连接远程地址。已启用的服务器对所有提供方生效。';
 
