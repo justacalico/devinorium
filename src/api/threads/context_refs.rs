@@ -20,7 +20,7 @@ use super::plan::project_working_dir_for_thread;
 use super::send::SendInput;
 
 /// Maximum number of context references accepted per message.
-const MAX_CONTEXT_REFS: usize = 64;
+pub(crate) const MAX_CONTEXT_REFS: usize = 64;
 /// Maximum length of a single context path.
 const MAX_CONTEXT_PATH_LEN: usize = 4096;
 

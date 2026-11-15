@@ -16,7 +16,7 @@ use crate::AppState;
 use super::send::SendInput;
 
 /// Maximum number of thread references accepted per message.
-const MAX_THREAD_REFS: usize = 8;
+pub(crate) const MAX_THREAD_REFS: usize = 8;
 /// Maximum length of a single referenced thread id.
 const MAX_THREAD_ID_LEN: usize = 128;
 /// Most recent messages pulled from each referenced thread.

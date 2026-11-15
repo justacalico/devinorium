@@ -149,14 +149,17 @@ impl RemoteProvider {
         options: &SendOptions,
     ) -> anyhow::Result<crate::node::RunOutcome> {
         let mut stream = resp.bytes_stream();
-        let mut buf = String::new();
+        // Bytes, not String: a multi-byte character split across chunk
+        // boundaries must not be lossy-decoded into U+FFFD before the
+        // event framing is applied.
+        let mut buf: Vec<u8> = Vec::new();
         let mut last_session: Option<String> = None;
         loop {
             let Some(chunk) = stream.next().await else {
                 anyhow::bail!("node stream ended without a result");
             };
             let chunk = chunk.context("node stream error")?;
-            buf.push_str(&String::from_utf8_lossy(&chunk));
+            buf.extend_from_slice(&chunk);
             while let Some(ev) = take_sse_event(&mut buf) {
                 match self.handle_event(ev, options).await? {
                     EventEffect::Done(mut outcome) => {
@@ -168,6 +171,12 @@ impl RemoteProvider {
                     EventEffect::Session(id) => last_session = Some(id),
                     EventEffect::Continue => {}
                 }
+            }
+            // Whatever remains is an incomplete event; without a cap a
+            // peer that never sends the blank-line terminator grows it
+            // without bound.
+            if buf.len() > MAX_SSE_BUFFER_BYTES {
+                anyhow::bail!("node stream event exceeded {MAX_SSE_BUFFER_BYTES} bytes");
             }
         }
     }
@@ -245,23 +254,29 @@ enum EventEffect {
     Done(Box<crate::node::RunOutcome>),
 }
 
+/// Largest incomplete SSE block held while waiting for its blank-line
+/// terminator. Complete events are drained first, so only a peer that
+/// never terminates an event can reach it; the bound still has to leave
+/// room for a legitimate `done` event carrying a whole turn's parts.
+const MAX_SSE_BUFFER_BYTES: usize = 64 * 1024 * 1024;
+
 /// Pop one complete `data:` SSE payload off the buffer. Satellite events
 /// are single-line JSON, so an event ends at a blank line. Comment blocks
 /// (keep-alives) and non-data lines are skipped rather than ending the
 /// stream - returning `None` must mean "no complete block yet", never
 /// "the next block was not an event", or a keep-alive flushed right before
 /// `done` would swallow the result.
-fn take_sse_event(buf: &mut String) -> Option<NodeEvent> {
+fn take_sse_event(buf: &mut Vec<u8>) -> Option<NodeEvent> {
     loop {
-        let end = buf.find("\n\n")?;
-        let raw = buf[..end].to_string();
-        buf.drain(..end + 2);
-        for line in raw.lines() {
-            if let Some(data) = line.strip_prefix("data:") {
-                let data = data.trim_start();
+        let end = buf.windows(2).position(|w| w == b"\n\n")?;
+        let raw: Vec<u8> = buf.drain(..end + 2).collect();
+        for line in raw.split(|b| *b == b'\n') {
+            if let Some(data) = line.strip_prefix(b"data:") {
                 // An unparseable payload is dropped, not treated as the end
                 // of buffered events: one bad event must not wedge the run.
-                if let Ok(ev) = serde_json::from_str::<NodeEvent>(data) {
+                // `from_slice` also validates UTF-8, so a character split
+                // across chunk boundaries can never decode half-formed.
+                if let Ok(ev) = serde_json::from_slice::<NodeEvent>(data) {
                     return Some(ev);
                 }
             }
@@ -339,8 +354,9 @@ mod tests {
     fn sse_parser_skips_keepalive_blocks() {
         // A keep-alive comment flushed in the same chunk as `done` must not
         // swallow the terminal event.
-        let mut buf = String::from(
-            ": keep-alive\n\ndata: {\"kind\":\"done\",\"outcome\":{\"session_id\":\"s\",\"reply\":\"ok\",\"thinking\":\"\",\"parts\":[]}}\n\n",
+        let mut buf = Vec::from(
+            ": keep-alive\n\ndata: {\"kind\":\"done\",\"outcome\":{\"session_id\":\"s\",\"reply\":\"ok\",\"thinking\":\"\",\"parts\":[]}}\n\n"
+                .as_bytes(),
         );
         let ev = take_sse_event(&mut buf).expect("done event survives the keep-alive");
         assert!(matches!(ev, NodeEvent::Done { .. }));
@@ -348,12 +364,30 @@ mod tests {
 
     #[test]
     fn sse_parser_waits_for_incomplete_block() {
-        let mut buf = String::from("data: {\"kind\":\"error\"");
+        let mut buf = Vec::from("data: {\"kind\":\"error\"".as_bytes());
         assert!(take_sse_event(&mut buf).is_none());
-        buf.push_str(",\"message\":\"boom\"}\n\n");
+        buf.extend_from_slice(",\"message\":\"boom\"}\n\n".as_bytes());
         assert!(matches!(
             take_sse_event(&mut buf),
             Some(NodeEvent::Error { .. })
         ));
+    }
+
+    #[test]
+    fn sse_parser_holds_split_utf8_until_block_complete() {
+        // A multi-byte character split across chunk boundaries must decode
+        // whole, not as replacement characters in the reply text.
+        let payload = "data: {\"kind\":\"done\",\"outcome\":{\"session_id\":\"s\",\"reply\":\"héllo\",\"thinking\":\"\",\"parts\":[]}}\n\n";
+        let bytes = payload.as_bytes();
+        // Split one byte into the 'é' two-byte sequence.
+        let split = payload.find('é').expect("payload has a multibyte char") + 1;
+        let mut buf = bytes[..split].to_vec();
+        assert!(take_sse_event(&mut buf).is_none());
+        buf.extend_from_slice(&bytes[split..]);
+        let ev = take_sse_event(&mut buf).expect("split utf8 block parses");
+        match ev {
+            NodeEvent::Done { outcome } => assert_eq!(outcome.reply, "héllo"),
+            _ => panic!("expected done event"),
+        }
     }
 }
