@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::auth::session::CurrentUser;
 use crate::terminal::session::{TerminalEvent, TerminalSession};
 use crate::AppState;
+use anyhow::Context as _;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateTerminal {
@@ -60,7 +61,7 @@ fn remote_node_for(
     state
         .remote_terminals
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .iter()
         .find(|(k, _)| k.ends_with(&suffix))
         .map(|(_, v)| v.clone())
@@ -70,7 +71,7 @@ fn drop_remote_node(state: &AppState, node_id: &str, session_id: &str) {
     state
         .remote_terminals
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .remove(&format!("{node_id}:{session_id}"));
 }
 
@@ -125,7 +126,7 @@ async fn create(
                 state
                     .remote_terminals
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|e| e.into_inner())
                     .insert(format!("{}:{}", node.id, id), (user.id, node));
                 (StatusCode::CREATED, Json(TerminalCreated { id })).into_response()
             }
@@ -334,6 +335,9 @@ async fn handle_socket(
                         let _ = socket.send(axum::extract::ws::Message::Text(payload.to_string())).await;
                         break;
                     }
+                    // A slow reader drops output but the session lives on;
+                    // only a closed channel ends the socket.
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(_) => break,
                 }
             }
@@ -359,14 +363,28 @@ async fn handle_socket(
         .await;
 }
 
-async fn handle_client_message(session: &TerminalSession, text: &str) -> anyhow::Result<()> {
+async fn handle_client_message(
+    session: &std::sync::Arc<TerminalSession>,
+    text: &str,
+) -> anyhow::Result<()> {
     let msg: ClientMessage = serde_json::from_str(text)?;
     match msg {
-        ClientMessage::Input { data } => session.write_input(&data)?,
-        ClientMessage::Resize { cols, rows } => session.resize(cols, rows)?,
-        ClientMessage::Signal { sig } => session.send_signal(&sig)?,
+        ClientMessage::Input { data } => {
+            // PTY writes can block on backpressure (XOFF, a stopped
+            // shell); keep that wait off the async worker.
+            let session = session.clone();
+            tokio::task::spawn_blocking(move || session.write_input(&data))
+                .await
+                .context("pty writer task")?
+        }
+        ClientMessage::Resize { cols, rows } => session.resize(cols, rows),
+        ClientMessage::Signal { sig } => {
+            let session = session.clone();
+            tokio::task::spawn_blocking(move || session.send_signal(&sig))
+                .await
+                .context("pty signal task")?
+        }
     }
-    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
