@@ -214,7 +214,7 @@ async fn subscribe_requires_auth() {
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("content-type", "application/json")
-                .body(Body::from(valid_sub("https://push.example.com/x")))
+                .body(Body::from(valid_sub("https://8.8.8.8/x")))
                 .unwrap(),
         )
         .await
@@ -242,7 +242,7 @@ async fn subscribe_validates_endpoint_and_keys() {
 
     // Wrong-size p256dh is rejected.
     let bad = serde_json::json!({
-        "endpoint": "https://push.example.com/x",
+        "endpoint": "https://8.8.8.8/x",
         "keys": { "p256dh": b64u(&[4u8; 10]), "auth": b64u(&[9u8; 16]) },
     })
     .to_string();
@@ -255,7 +255,7 @@ async fn subscribe_validates_endpoint_and_keys() {
 
     // Garbage base64 is rejected.
     let bad = serde_json::json!({
-        "endpoint": "https://push.example.com/x",
+        "endpoint": "https://8.8.8.8/x",
         "keys": { "p256dh": "!!!", "auth": b64u(&[9u8; 16]) },
     })
     .to_string();
@@ -269,7 +269,7 @@ async fn subscribe_validates_endpoint_and_keys() {
     // Plain http endpoints are rejected — the VAPID JWT must never travel
     // unencrypted and browsers only ever mint https endpoints.
     let bad = serde_json::json!({
-        "endpoint": "http://push.example.com/x",
+        "endpoint": "http://8.8.8.8/x",
         "keys": { "p256dh": b64u(&[4u8; 65]), "auth": b64u(&[9u8; 16]) },
     })
     .to_string();
@@ -285,7 +285,7 @@ async fn subscribe_validates_endpoint_and_keys() {
     let mut point = vec![0x05u8];
     point.extend_from_slice(&[7u8; 64]);
     let bad = serde_json::json!({
-        "endpoint": "https://push.example.com/x",
+        "endpoint": "https://8.8.8.8/x",
         "keys": { "p256dh": b64u(&point), "auth": b64u(&[9u8; 16]) },
     })
     .to_string();
@@ -295,6 +295,45 @@ async fn subscribe_validates_endpoint_and_keys() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn subscribe_rejects_internal_endpoint_hosts() {
+    let (app, _db) = make_app(true).await;
+    let cookie = login(&app).await;
+
+    for ep in [
+        "https://127.0.0.1/x",
+        "https://10.0.0.1/x",
+        "https://169.254.169.254/latest/meta-data",
+        "https://[::1]/x",
+        "https://localhost/x",
+    ] {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "PUT",
+                "/api/push/subscriptions",
+                &cookie,
+                &valid_sub(ep),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{ep} accepted");
+    }
+
+    // A public literal passes.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/push/subscriptions",
+            &cookie,
+            &valid_sub("https://8.8.8.8/x"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
 }
 
 #[tokio::test]
@@ -308,7 +347,7 @@ async fn subscribe_is_capped_per_user() {
                 "PUT",
                 "/api/push/subscriptions",
                 &cookie,
-                &valid_sub(&format!("https://push.example.com/sub/{i}")),
+                &valid_sub(&format!("https://8.8.8.8/sub/{i}")),
             ))
             .await
             .unwrap();
@@ -321,7 +360,7 @@ async fn subscribe_is_capped_per_user() {
             "PUT",
             "/api/push/subscriptions",
             &cookie,
-            &valid_sub("https://push.example.com/sub/16"),
+            &valid_sub("https://8.8.8.8/sub/16"),
         ))
         .await
         .unwrap();
@@ -333,7 +372,7 @@ async fn subscribe_is_capped_per_user() {
             "PUT",
             "/api/push/subscriptions",
             &cookie,
-            &valid_sub("https://push.example.com/sub/0"),
+            &valid_sub("https://8.8.8.8/sub/0"),
         ))
         .await
         .unwrap();
@@ -344,7 +383,7 @@ async fn subscribe_is_capped_per_user() {
 async fn subscribe_list_and_unsubscribe_roundtrip() {
     let (app, db) = make_app(true).await;
     let cookie = login(&app).await;
-    let endpoint = "https://push.example.com/sub/1";
+    let endpoint = "https://8.8.8.8/sub/1";
 
     let resp = app
         .clone()
