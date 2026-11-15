@@ -389,8 +389,11 @@ async fn delete(
     if rel.is_empty() {
         return invalid();
     }
-    let (_resolved, root) = match resolve(&state, q.root.as_deref(), Some(rel)).await {
-        Ok(v) => v,
+    // Scope-check the parent, not the leaf: resolving the leaf itself would
+    // reject a dangling symlink, which is exactly the kind of entry delete
+    // exists to remove.
+    let root = match resolve_root(&state, q.root.as_deref()).await {
+        Ok(r) => r,
         Err(r) => return *r,
     };
     let target = if Path::new(rel).is_absolute() {
@@ -402,6 +405,7 @@ async fn delete(
     if last == "."
         || last == ".."
         || (!Path::new(rel).is_absolute() && !paths::normalize_lexical(&target).starts_with(&root))
+        || paths::is_hidden_within(&root, &target)
     {
         return invalid();
     }
@@ -412,6 +416,13 @@ async fn delete(
         Ok(p) => p,
         Err(e) => return internal(e).into_response(),
     };
+    // The canonicalized parent reveals symlink targets, so check it for
+    // hidden components the lexical target could disguise.
+    if paths::is_hidden_within(&root, &canon_parent)
+        || (!Path::new(rel).is_absolute() && !canon_parent.starts_with(&root))
+    {
+        return invalid();
+    }
     let op_target = canon_parent.join(name);
     let meta = match tokio::fs::symlink_metadata(&op_target).await {
         Ok(m) => m,

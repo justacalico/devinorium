@@ -657,3 +657,59 @@ async fn unpaired_node_project_does_not_fall_back_to_local() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
 }
+
+#[tokio::test]
+#[cfg(unix)]
+async fn satellite_files_delete_removes_dangling_symlink() {
+    let sat = start_satellite().await;
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/node/pair", sat.url))
+        .json(&serde_json::json!({"code": sat.code}))
+        .send()
+        .await
+        .unwrap();
+    let token = resp.json::<serde_json::Value>().await.unwrap()["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // A symlink whose target does not exist cannot be canonicalized, but
+    // deleting it is safe and must still work.
+    let link = sat.state.home_dir.join("dead_link");
+    std::os::unix::fs::symlink("/nonexistent-target-xyz", &link).unwrap();
+    let root = sat.state.home_dir.to_string_lossy();
+    let resp = client
+        .delete(format!(
+            "{}/api/node/files/delete?root={}&path=dead_link",
+            sat.url,
+            urlencoding(root.as_ref())
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert!(link.symlink_metadata().is_err(), "link should be gone");
+
+    // A mid-path symlink that escapes the root is still refused.
+    let outside = tempfile::tempdir().unwrap();
+    std::fs::write(outside.path().join("victim.txt"), "keep").unwrap();
+    std::os::unix::fs::symlink(outside.path(), sat.state.home_dir.join("portal")).unwrap();
+    let resp = client
+        .delete(format!(
+            "{}/api/node/files/delete?root={}&path=portal/victim.txt",
+            sat.url,
+            urlencoding(root.as_ref())
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+    assert!(outside.path().join("victim.txt").exists());
+}
+
+fn urlencoding(s: &str) -> String {
+    s.replace('/', "%2F")
+}

@@ -137,6 +137,15 @@ pub fn resolve(path: &Path, base: Option<&Path>, roots: Option<&[PathBuf]>) -> O
             let mut canon = existing.canonicalize().ok()?;
             for name in tail.iter().rev() {
                 canon = canon.join(name);
+                // A tail component must not exist on disk: if it did, the
+                // original canonicalize would have resolved through it. A
+                // dangling symlink slips past `exists()` (it follows the
+                // link) and would be re-appended verbatim, so a later write
+                // through it lands outside the root.
+                match std::fs::symlink_metadata(&canon) {
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    _ => return None,
+                }
             }
             canon
         }
@@ -275,6 +284,22 @@ mod tests {
         let roots = vec![tmp.clone()];
         let resolved = resolve_within(Path::new("hello.txt"), Some(&tmp), &roots);
         assert!(resolved.is_some());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn rejects_dangling_symlink_in_missing_tail() {
+        let tmp = tempfile::tempdir().unwrap().keep();
+        let roots = vec![tmp.clone()];
+        // `link` points at a path outside the root that does not exist yet,
+        // so the symlink itself fails both `exists()` and canonicalize; a
+        // write through it would create the file outside the root.
+        std::os::unix::fs::symlink("/nonexistent-outside-target", tmp.join("link")).unwrap();
+        let resolved = resolve_within(Path::new("link/new.txt"), Some(&tmp), &roots);
+        assert!(
+            resolved.is_none(),
+            "dangling symlink in the tail must not resolve inside the root"
+        );
     }
 
     #[test]
