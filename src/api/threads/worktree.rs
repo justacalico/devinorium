@@ -434,6 +434,22 @@ pub(crate) async fn cleanup_thread_worktree(
         .filter(|p| !p.is_empty())
         .map(PathBuf::from);
 
+    // `branch` and `worktree_path` are writable through the API, so one
+    // thread can be pointed at another's managed worktree. If a surviving
+    // thread still claims either, leave the worktree and branch alone.
+    match state
+        .db
+        .worktree_still_referenced(thread.user_id, branch, thread.worktree_path.as_deref())
+        .await
+    {
+        Ok(true) => return,
+        Ok(false) => {}
+        Err(e) => {
+            tracing::warn!(error = %e, thread_id = %thread.id, "worktree reference check failed; skipping cleanup");
+            return;
+        }
+    }
+
     // Resolve the machine first so remote worktrees clean up on the node
     // they were created on. The project row may already be deleted (the
     // project-delete path removes threads in the same transaction), so the

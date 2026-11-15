@@ -420,6 +420,27 @@ impl super::Db {
         Ok(())
     }
 
+    /// True when any surviving thread row still points at `branch` or
+    /// `worktree_path`. `branch`/`worktree_path` are writable through the
+    /// API, so a deleted thread's cleanup must check nothing else claims
+    /// the same worktree before tearing it down.
+    pub async fn worktree_still_referenced(
+        &self,
+        user_id: i64,
+        branch: &str,
+        worktree_path: Option<&str>,
+    ) -> anyhow::Result<bool> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM threads WHERE user_id = ? AND (branch = ? OR worktree_path = ?)",
+        )
+        .bind(user_id)
+        .bind(branch)
+        .bind(worktree_path)
+        .fetch_one(self.pool())
+        .await?;
+        Ok(count > 0)
+    }
+
     /// Delete a thread, returning the removed row so callers can clean up
     /// resources it referenced (worktree, branch). `None` means no thread
     /// matched.
@@ -620,5 +641,61 @@ mod tests {
             last_role(&db, uid, "system").await.as_deref(),
             Some("system")
         );
+    }
+
+    #[tokio::test]
+    async fn worktree_reference_survives_thread_delete() {
+        let db = db().await;
+        let uid = user(&db).await;
+        thread(&db, "a", uid).await;
+        thread(&db, "b", uid).await;
+        db.update_thread_git("a", uid, Some("devinorium/wt-x"), Some("/repo/wt-x"))
+            .await
+            .unwrap();
+        db.update_thread_git("b", uid, Some("devinorium/wt-x"), Some("/repo/wt-x"))
+            .await
+            .unwrap();
+
+        db.delete_thread("a", uid).await.unwrap();
+        // The survivor still claims the worktree: cleanup must not run.
+        assert!(db
+            .worktree_still_referenced(uid, "devinorium/wt-x", Some("/repo/wt-x"))
+            .await
+            .unwrap());
+
+        db.delete_thread("b", uid).await.unwrap();
+        assert!(!db
+            .worktree_still_referenced(uid, "devinorium/wt-x", Some("/repo/wt-x"))
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn worktree_reference_ignores_other_users() {
+        let db = db().await;
+        let uid = user(&db).await;
+        thread(&db, "mine", uid).await;
+        db.update_thread_git("mine", uid, Some("devinorium/wt-y"), Some("/repo/wt-y"))
+            .await
+            .unwrap();
+        let uid2 = db
+            .create_user(NewUser {
+                username: "u2".into(),
+                password_hash: "x".into(),
+                is_owner: false,
+            })
+            .await
+            .unwrap()
+            .id;
+        thread(&db, "theirs", uid2).await;
+        db.update_thread_git("theirs", uid2, Some("devinorium/wt-y"), Some("/repo/wt-y"))
+            .await
+            .unwrap();
+        db.delete_thread("mine", uid).await.unwrap();
+        // Another user's thread cannot block this user's cleanup.
+        assert!(!db
+            .worktree_still_referenced(uid, "devinorium/wt-y", Some("/repo/wt-y"))
+            .await
+            .unwrap());
     }
 }
