@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.115.1 - 2026-11-15
+#### Bug Fixes
+- 议题与合并请求提示信息本地化 - (7d1595f) - HttpAnimations
+- 修复多处界面交互问题 - (45aed73) - HttpAnimations
+- 修复终端与服务连接的若干问题 - (d8f07d3) - HttpAnimations
+- 修复会话与项目列表的异步竞态并固定文件作用域 - (3bbcdde) - HttpAnimations
+
+- - -
+
 ## v0.115.0 - 2026-11-15
 #### Features
 - 添加插件设置页 - (0e57d7a) - HttpAnimations
