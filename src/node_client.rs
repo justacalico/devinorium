@@ -184,7 +184,7 @@ impl NodeClient {
         let mut resp = resp;
         let body = read_body_capped(&mut resp, 64 * 1024)
             .await
-            .map_err(|e| anyhow::anyhow!("node info body: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("node info body: {e}"))?;
         Ok(serde_json::from_slice::<NodeInfo>(&body)?)
     }
 
