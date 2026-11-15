@@ -145,14 +145,22 @@ mixin GitStore on AppStateBase {
 
   @override
   Future<void> loadGitRepoInfo(int projectId, {bool force = false}) async {
+    final gen = _serverSeq;
     try {
       final info = await api.gitRepoStatus(projectId, force: force);
+      if (gen != _serverSeq) return;
       _gitRepoInfo[projectId] = info;
       _globalError = '';
       _syncProjectBranch(projectId, info);
     } catch (e) {
-      // 404 / not a repo is not an error; clear the state.
-      _gitRepoInfo.remove(projectId);
+      if (gen != _serverSeq) return;
+      // 404 / not a repo is not an error; clear the state. Anything else
+      // keeps the last known info so the branch toolbar survives a blip.
+      if (e is ApiException && e.statusCode == 404) {
+        _gitRepoInfo.remove(projectId);
+      } else {
+        debugLogFailure('git.loadRepoInfo', e);
+      }
     }
     notifyListeners();
   }
@@ -174,28 +182,42 @@ mixin GitStore on AppStateBase {
     String? query,
     bool force = false,
   }) async {
+    final gen = _serverSeq;
     try {
       final branches = await api.gitBranches(
         projectId,
         query: query,
         force: force,
       );
+      if (gen != _serverSeq) return;
       _gitBranches[projectId] = branches;
       _globalError = '';
     } catch (e) {
-      _gitBranches.remove(projectId);
+      if (gen != _serverSeq) return;
+      if (e is ApiException && e.statusCode == 404) {
+        _gitBranches.remove(projectId);
+      } else {
+        debugLogFailure('git.loadBranches', e);
+      }
     }
     notifyListeners();
   }
 
   @override
   Future<void> loadGitWorktrees(int projectId, {bool force = false}) async {
+    final gen = _serverSeq;
     try {
       final worktrees = await api.gitWorktrees(projectId, force: force);
+      if (gen != _serverSeq) return;
       _gitWorktrees[projectId] = worktrees;
       _globalError = '';
     } catch (e) {
-      _gitWorktrees.remove(projectId);
+      if (gen != _serverSeq) return;
+      if (e is ApiException && e.statusCode == 404) {
+        _gitWorktrees.remove(projectId);
+      } else {
+        debugLogFailure('git.loadWorktrees', e);
+      }
     }
     notifyListeners();
   }

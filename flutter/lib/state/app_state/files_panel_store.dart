@@ -11,6 +11,10 @@ mixin FilesPanelStore on AppStateBase {
   String _filesError = '';
   @override
   String? _filesScopeKey;
+  @override
+  String? _filesScopeThreadId;
+  @override
+  int? _filesScopeProjectId;
 
   int _filesTreeVersion = 0;
   List<FileTreeRow>? _filesTreeRowsCache;
@@ -89,10 +93,23 @@ mixin FilesPanelStore on AppStateBase {
   /// The thread_id to attach to file API calls. Sent only while the loaded
   /// tree is a worktree scope; for a project-scope tree the relative paths
   /// must keep resolving at the project root even if the thread has since
-  /// moved into a worktree.
+  /// moved into a worktree. The id is captured with the scope so a switch
+  /// to another thread on the same worktree cannot send a foreign id
+  /// against the loaded tree.
   @override
-  String? get filesApiThreadId =>
-      _filesScopeKey?.startsWith('worktree:') == true ? _activeThreadId : null;
+  String? get filesApiThreadId => _filesScopeThreadId;
+
+  /// The project the loaded tree belongs to. Reads and writes must keep
+  /// targeting it even after the user activates a different project.
+  @override
+  int? get filesApiProjectId => _filesScopeProjectId;
+
+  void _captureFilesScope() {
+    _filesScopeKey = activeFilesScopeKey;
+    _filesScopeProjectId = _activeProjectId;
+    _filesScopeThreadId =
+        _filesScopeKey?.startsWith('worktree:') == true ? _activeThreadId : null;
+  }
 
   @override
   List<DirEntry> get filesEntries =>
@@ -124,7 +141,7 @@ mixin FilesPanelStore on AppStateBase {
     _gitPanelOpen = false;
     _filesError = '';
     _filesTreeRoot = FileTreeNode.root()..isLoading = true;
-    _filesScopeKey = activeFilesScopeKey;
+    _captureFilesScope();
     _bumpFilesTreeVersion();
     notifyListeners();
     if (_activeProjectId == null) {
@@ -149,7 +166,7 @@ mixin FilesPanelStore on AppStateBase {
   Future<void> reloadFiles() async {
     if (_filesTreeRoot.isLoading) return;
     _filesTreeRoot = FileTreeNode.root()..hasMore = true;
-    _filesScopeKey = activeFilesScopeKey;
+    _captureFilesScope();
     _bumpFilesTreeVersion();
     if (_activeProjectId == null) {
       _filesTreeRoot.children = [];
@@ -176,7 +193,7 @@ mixin FilesPanelStore on AppStateBase {
 
   @override
   Future<void> loadMoreFiles({FileTreeNode? node}) async {
-    if (_activeProjectId == null) return;
+    if (_filesScopeProjectId == null) return;
     final target = node ?? _filesTreeRoot;
     if (target.isLoading || target.isLoadingMore || !target.hasMore) return;
     target.isLoadingMore = true;
@@ -186,7 +203,7 @@ mixin FilesPanelStore on AppStateBase {
         path: target.fullPathString.isEmpty
             ? null
             : filesScopedPath(target.fullPathString),
-        projectId: _activeProjectId,
+        projectId: _filesScopeProjectId,
         threadId: filesApiThreadId,
         limit: _fileChunkSize,
         offset: target.offset,
@@ -220,7 +237,7 @@ mixin FilesPanelStore on AppStateBase {
           entries.map((e) => FileTreeNode(path: const [], entry: e)).toList()
       ..offset = entries.length
       ..hasMore = false;
-    _filesScopeKey = activeFilesScopeKey;
+    _captureFilesScope();
     _filesError = '';
     _bumpFilesTreeVersion();
     notifyListeners();
@@ -228,12 +245,12 @@ mixin FilesPanelStore on AppStateBase {
 
   @override
   Future<void> mkdir(String name) async {
-    if (_activeProjectId == null) return;
+    if (_filesScopeProjectId == null) return;
     final full = name.trim();
     try {
       await api.mkdir(
         filesScopedPath(full),
-        projectId: _activeProjectId,
+        projectId: _filesScopeProjectId,
         threadId: filesApiThreadId,
       );
       _filesError = '';
@@ -247,12 +264,12 @@ mixin FilesPanelStore on AppStateBase {
 
   @override
   Future<void> deleteFile(String path) async {
-    if (_activeProjectId == null) return;
+    if (_filesScopeProjectId == null) return;
     final scoped = filesScopedPath(path);
     try {
       await api.deleteFile(
         scoped,
-        projectId: _activeProjectId,
+        projectId: _filesScopeProjectId,
         threadId: filesApiThreadId,
       );
       for (final tab in editorTabs.toList().reversed) {
@@ -270,7 +287,7 @@ mixin FilesPanelStore on AppStateBase {
   }
 
   Future<void> _loadChildren(FileTreeNode node) async {
-    if (_activeProjectId == null) {
+    if (_filesScopeProjectId == null) {
       node.isLoading = false;
       node.children = [];
       _bumpFilesTreeVersion();
@@ -284,6 +301,8 @@ mixin FilesPanelStore on AppStateBase {
     // (auto-created on send), and the loaded tree must be marked with the
     // scope the request actually ran under.
     final scope = _filesScopeKey;
+    final scopeThread = _filesScopeThreadId;
+    final scopeProject = _filesScopeProjectId;
     _bumpFilesTreeVersion();
     notifyListeners();
     try {
@@ -291,8 +310,8 @@ mixin FilesPanelStore on AppStateBase {
         path: node.fullPathString.isEmpty
             ? null
             : filesScopedPath(node.fullPathString),
-        projectId: _activeProjectId,
-        threadId: filesApiThreadId,
+        projectId: scopeProject,
+        threadId: scopeThread,
         limit: _fileChunkSize,
         offset: 0,
       );
@@ -303,6 +322,8 @@ mixin FilesPanelStore on AppStateBase {
       node.hasMore = chunk.length == _fileChunkSize;
       if (node.fullPath.isEmpty && identical(node, _filesTreeRoot)) {
         _filesScopeKey = scope;
+        _filesScopeThreadId = scopeThread;
+        _filesScopeProjectId = scopeProject;
       }
     } catch (e) {
       node.error = '$e';

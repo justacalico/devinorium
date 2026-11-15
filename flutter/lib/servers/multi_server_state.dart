@@ -104,6 +104,7 @@ class MultiServerState extends ChangeNotifier {
         existing != null &&
         existing.baseUrl == profile.baseUrl &&
         existing.token == profile.token &&
+        existing.username == profile.username &&
         api == null;
     if (!unchanged || !_apis.containsKey(profile.id)) {
       _apis[profile.id]?.dispose();

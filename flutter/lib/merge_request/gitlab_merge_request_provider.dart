@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../l10n/global_l10n.dart';
 import 'dart:typed_data';
 
 import '../api/api_client.dart';
@@ -62,7 +63,7 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
     if (ref == null) {
       _ref = null;
       _url = null;
-      _emit(AsyncValue.error('Not a supported GitLab merge request URL'));
+      _emit(AsyncValue.error(appL10n.mergeRequestUrlUnsupported('GitLab')));
       return;
     }
 
@@ -269,7 +270,7 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
         : ('', '');
 
     return MergeRequestDetail(
-      title: _string(mr, 'title') ?? 'Untitled merge request',
+      title: _string(mr, 'title') ?? appL10n.untitledMergeRequest,
       description: _string(mr, 'description') ?? '',
       state: _string(mr, 'state') ?? '',
       sourceBranch: _string(mr, 'source_branch') ?? '',

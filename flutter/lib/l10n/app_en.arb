@@ -317,6 +317,34 @@
   "attachSourceTakePhoto": "Take Photo",
   "attachSourceRecordVideo": "Record Video",
   "attachSourceBrowse": "Browse",
+  "issueUrlUnsupported": "Not a supported {provider} issue URL",
+  "@issueUrlUnsupported": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
+  },
+  "mergeRequestUrlUnsupported": "Not a supported {provider} merge request URL",
+  "@mergeRequestUrlUnsupported": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
+  },
+  "pullRequestUrlUnsupported": "Not a supported {provider} pull request URL",
+  "@pullRequestUrlUnsupported": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
+  },
+  "untitledIssue": "Untitled issue",
+  "untitledMergeRequest": "Untitled merge request",
+  "untitledPullRequest": "Untitled pull request",
+  "attachFiles": "Attach files",
   "removeAttachment": "Remove attachment",
   "files": "Files",
   "emptyFolder": "Empty folder",

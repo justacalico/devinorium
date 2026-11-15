@@ -41,6 +41,7 @@ class _FolderPickerState extends State<FolderPicker> {
   var _isAbsolute = false;
   var _entries = <DirEntry>[];
   var _loading = true;
+  var _loadSeq = 0;
   String? _error;
 
   @override
@@ -78,6 +79,7 @@ class _FolderPickerState extends State<FolderPicker> {
   bool get _isHomeRoot => !_isAbsolute && _pathSegments.isEmpty;
 
   Future<void> _load() async {
+    final seq = ++_loadSeq;
     setState(() {
       _loading = true;
       _error = null;
@@ -89,7 +91,8 @@ class _FolderPickerState extends State<FolderPicker> {
         projectId: null,
         nodeId: widget.nodeId,
       );
-      if (!mounted) return;
+      // A slower earlier listing must not overwrite the newer path's.
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
         _entries = entries
             .where((e) => e.isDir && !e.name.startsWith('.'))
@@ -97,7 +100,7 @@ class _FolderPickerState extends State<FolderPicker> {
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
         _error = '$e';
         _loading = false;

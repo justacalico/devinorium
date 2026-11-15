@@ -181,7 +181,9 @@ class LocalServerManager implements LocalServerController {
     // instance published if it still answers. Adoption runs before the
     // quick-exit cap so a crash loop never locks out a healthy shared server.
     final adopted = await _adoptExisting();
-    if (adopted != null) return adopted;
+    // stop() may have landed while the adoption health check was in
+    // flight; do not hand out an endpoint for a manager that is stopping.
+    if (adopted != null && !_stopping) return adopted;
 
     if (_stopping) {
       _endpoint = null;
@@ -255,6 +257,13 @@ class LocalServerManager implements LocalServerController {
       _detach();
       proc.kill();
       if (!alreadyCounted && !_stopping) _quickExits += 1;
+      return null;
+    }
+    if (_stopping) {
+      // stop() landed inside the health window: do not hand out an
+      // endpoint for a process that is about to die.
+      _detach();
+      proc.kill();
       return null;
     }
     _quickExits = 0;

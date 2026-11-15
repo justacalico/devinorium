@@ -319,7 +319,7 @@ class _MrChipBody extends StatelessWidget {
                 Icons.merge,
                 size: 11,
                 color: style.fg,
-                semanticLabel: 'Merge request $iid',
+                semanticLabel: '${l10n(context).mergeRequest} $iid',
               ),
               const SizedBox(width: 2),
               Text(

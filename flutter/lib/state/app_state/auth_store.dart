@@ -807,6 +807,7 @@ mixin AuthStore on AppStateBase {
     _projectsOffset = 0;
     _projectsHasMore = true;
     _loadingMoreProjects = false;
+    _projectsListSeq++;
     _allProjectsLoad = null;
     _projectGroups = [];
     _selectedProjectGroupId = kUncategorizedProjectGroupId;
@@ -818,12 +819,16 @@ mixin AuthStore on AppStateBase {
     _userThreadsOffset = 0;
     _userThreadsHasMore = true;
     _loadingMoreUserThreads = false;
+    _userThreadsResetPending = false;
     _threadOpening = false;
     _projectThreadOffsets.clear();
     _projectThreadsHasMore.clear();
     _loadingMoreProjectThreads.clear();
+    _projectThreadsResetPending.clear();
     _filesTreeRoot = FileTreeNode.root();
     _filesScopeKey = null;
+    _filesScopeThreadId = null;
+    _filesScopeProjectId = null;
     _filesPanelOpen = false;
     _sidebarOpen = false;
     _filesError = '';
@@ -890,6 +895,7 @@ mixin AuthStore on AppStateBase {
     _models = [];
     _modelsByProvider.clear();
     _providers = [];
+    ++_modelsRequestSeq;
     await _saveSelectedProvider('');
     await _saveSelectedModel('');
     await _saveSelectedPermission('');

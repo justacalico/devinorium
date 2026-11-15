@@ -168,7 +168,13 @@ final _pending = <_PendingMessage>[];
 
 void _ensureHost(OverlayState overlay) {
   if (identical(_hostOverlay, overlay) && _hostEntry != null) return;
-  _hostEntry?.remove();
+  // The previous root Overlay may already have been remounted, which drops
+  // its entries; removing one of those throws.
+  try {
+    _hostEntry?.remove();
+  } catch (_) {
+    _hostEntry = null;
+  }
   _hostKey = GlobalKey();
   _hostEntry = OverlayEntry(builder: (_) => _MessageHost(key: _hostKey));
   overlay.insert(_hostEntry!);

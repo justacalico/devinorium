@@ -425,6 +425,7 @@ class AppState extends AppStateBase
     _activeStore?.onThreadUpdated = null;
     _activeStore?.onRunFinished = null;
     _activeStore?.onAgentEditedFiles = null;
+    _activeStore?.onThreadsListRefresh = null;
     _activeStore?.cancelStream();
     _activeStore?.clearStreamingState();
     // A send cancelled by the switch never got its ack; hand the text back
@@ -555,6 +556,7 @@ class AppState extends AppStateBase
         unawaited(refreshLinkedMergeRequest());
       }
     };
+    store.onThreadsListRefresh = () => unawaited(refreshThreadsAndGroups());
     store.onAgentEditedFiles = (paths) {
       // In editor mode each file the agent edits gets surfaced: open a tab
       // when none exists for the path, focus the tab when it does.
