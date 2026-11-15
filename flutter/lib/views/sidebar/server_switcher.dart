@@ -31,6 +31,7 @@ class _ServerSwitcher extends StatelessWidget {
         return Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
           child: MenuAnchor(
+            onClose: () => _clearMenuFocus(context),
             menuChildren: [
               for (final profile in profiles)
                 MenuItemButton(

@@ -13,7 +13,8 @@ class LinkedMergeRequestChip extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final draft = mr.draft;
     final marker = mr.refMarker;
-    final label = draft ? 'Draft $marker${mr.iid}' : '$marker${mr.iid}';
+    final label =
+        draft ? '${l10n(context).draft} $marker${mr.iid}' : '$marker${mr.iid}';
     final tooltip = mr.title.isEmpty ? label : '$label: ${mr.title}';
     return Tooltip(
       message: tooltip,

@@ -152,16 +152,13 @@ class _ChatViewState extends State<ChatView> {
     final max = position.maxScrollExtent;
     final pos = position.pixels;
     final distFromTop = max - pos;
-    if (distFromTop < _loadMoreThreshold &&
-        pos > 0 &&
-        max > _loadMoreThreshold &&
-        !_loadingMore) {
+    if (distFromTop < _loadMoreThreshold && pos > 0 && !_loadingMore) {
       _loadMore();
     }
   }
 
   void _loadMore() {
-    if (!mounted) return;
+    if (!mounted || !_scrollController.hasClients) return;
     final state = context.read<AppState>();
     final threadId = state.activeThreadId;
     if (threadId == null) return;
@@ -256,6 +253,20 @@ class _ChatViewState extends State<ChatView> {
         }
         _lastMessageCount = msgCount;
         _lastStreamingDigest = model.streamingDigest;
+
+        // A page that fits inside the viewport gives the user no way to
+        // scroll to the top, so earlier history would be unreachable.
+        // Keep filling until the list scrolls or hasMore runs out.
+        if (model.detail?.hasMore == true && !_loadingMore) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || !_scrollController.hasClients || _loadingMore) {
+              return;
+            }
+            if (_scrollController.position.maxScrollExtent <= 0) {
+              _loadMore();
+            }
+          });
+        }
 
         final threadId = model.activeThreadId;
         if (threadId != _lastThreadId) {

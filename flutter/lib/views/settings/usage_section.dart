@@ -18,9 +18,14 @@ class _UsageSectionState extends State<_UsageSection> {
   int _days = 30;
   Future<UsageSummary>? _future;
 
+  /// The server the summary was last loaded for; switching servers must
+  /// refetch instead of showing the previous server's numbers.
+  String? _seenServerId;
+
   @override
   void initState() {
     super.initState();
+    _seenServerId = widget.state.activeServerId;
     _load();
   }
 
@@ -41,6 +46,19 @@ class _UsageSectionState extends State<_UsageSection> {
     final theme = Theme.of(context);
     final l = l10n(context);
 
+    return Selector<AppState, String?>(
+      selector: (_, s) => s.activeServerId,
+      builder: (context, serverId, _) {
+        if (serverId != _seenServerId) {
+          _seenServerId = serverId;
+          _load();
+        }
+        return _usageCard(theme, l);
+      },
+    );
+  }
+
+  Widget _usageCard(ThemeData theme, AppLocalizations l) {
     return _SectionCard(
       title: l.usage,
       children: [

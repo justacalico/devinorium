@@ -173,6 +173,7 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
     return Dialog(
       backgroundColor: theme.colorScheme.surface,
       insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+      constraints: const BoxConstraints(maxWidth: 720),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: SizedBox(
         width: 720,

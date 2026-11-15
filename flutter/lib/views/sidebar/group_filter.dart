@@ -32,6 +32,7 @@ class _GroupFilter extends StatelessWidget {
             : selectedName ?? l.groupFilterAll;
 
         return MenuAnchor(
+          onClose: () => _clearMenuFocus(context),
           menuChildren: [
             MenuItemButton(
               key: const Key('group_filter_all'),

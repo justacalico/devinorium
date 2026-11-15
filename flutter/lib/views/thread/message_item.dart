@@ -624,7 +624,12 @@ class _MessageContextMenu extends StatelessWidget {
       if (canCopy)
         PopupMenuItem(
           child: Text(l.copyMessage),
-          onTap: () => _copyMessage(context, message.content),
+          onTap: () => _copyMessage(
+            context,
+            message.role == 'assistant'
+                ? stripPlanMarkup(message.content)
+                : message.content,
+          ),
         ),
       if (canEdit)
         PopupMenuItem(

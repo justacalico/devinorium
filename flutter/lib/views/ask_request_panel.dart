@@ -245,7 +245,10 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
           return const SizedBox.shrink();
         }
 
-        final question = _currentQuestion!;
+        final question = _currentQuestion;
+        if (question == null) {
+          return const SizedBox.shrink();
+        }
         final isFirst = _currentIndex == 0;
         final isLast = _currentIndex == _questions.length - 1;
 

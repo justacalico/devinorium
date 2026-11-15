@@ -155,7 +155,10 @@ class _ComposerState extends State<_Composer> {
     final imageBytes = await getClipboardImage();
     if (!mounted) return;
     if (imageBytes != null && imageBytes.isNotEmpty) {
-      if (!state.hasActiveThreadStore) return;
+      if (!state.hasActiveThreadStore) {
+        state.setGlobalError(l.selectOrCreateThread);
+        return;
+      }
       final result = await readAttachment(
         InMemoryAttachmentSource('pasted-image', imageBytes),
       );
@@ -699,6 +702,7 @@ class _ComposerState extends State<_Composer> {
         providers: s.providers,
       ),
       builder: (context, model, _) {
+        final l = l10n(context);
         final isSending = model.sending || model.sendPending;
         final hasActiveThread = model.activeThreadId != null;
         final hasStore = model.hasStore;
@@ -1070,6 +1074,7 @@ class _ComposerState extends State<_Composer> {
                           Row(
                             children: [
                               IconButton(
+                                tooltip: l.attachFiles,
                                 icon: const Icon(Icons.attach_file, size: 20),
                                 onPressed: hasStore && !isSending
                                     ? () async {

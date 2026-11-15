@@ -15,6 +15,7 @@ class _TailscaleSection extends StatefulWidget {
 
 class _TailscaleSectionState extends State<_TailscaleSection> {
   final TextEditingController _portCtrl = TextEditingController();
+  final FocusNode _portFocus = FocusNode();
 
   /// The last port the server reported, so the field re-syncs when the
   /// server-side value changes without clobbering an in-progress edit.
@@ -23,6 +24,7 @@ class _TailscaleSectionState extends State<_TailscaleSection> {
   @override
   void dispose() {
     _portCtrl.dispose();
+    _portFocus.dispose();
     super.dispose();
   }
 
@@ -72,7 +74,9 @@ class _TailscaleSectionState extends State<_TailscaleSection> {
         // Hidden until the server answers, except on the bundled profile
         // where the greyed-out card explains why the feature is missing.
         if (info == null && !bundled) return const SizedBox.shrink();
-        if (ts != null && ts.servePort != _syncedPort) {
+        if (ts != null &&
+            ts.servePort != _syncedPort &&
+            !_portFocus.hasFocus) {
           _syncedPort = ts.servePort;
           _portCtrl.text = '${ts.servePort}';
         }
@@ -196,6 +200,7 @@ class _TailscaleSectionState extends State<_TailscaleSection> {
                     child: TextField(
                       key: const Key('tailscale_serve_port'),
                       controller: _portCtrl,
+                      focusNode: _portFocus,
                       enabled: canToggle && !ts.serveEnabled,
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],

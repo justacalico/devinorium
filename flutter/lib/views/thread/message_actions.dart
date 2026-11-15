@@ -37,7 +37,12 @@ class _MessageActions extends StatelessWidget {
           _MessageActionButton(
             icon: Icons.content_copy_outlined,
             tooltip: l.copyMessage,
-            onTap: () => _copyMessage(context, message.content),
+            onTap: () => _copyMessage(
+              context,
+              message.role == 'assistant'
+                  ? stripPlanMarkup(message.content)
+                  : message.content,
+            ),
           ),
         if (_canEdit)
           _MessageActionButton(
