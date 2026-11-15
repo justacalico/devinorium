@@ -1753,6 +1753,70 @@ async fn unstage_works_on_unborn_head() {
 }
 
 #[tokio::test]
+async fn status_works_on_unborn_head() {
+    let tmp = TempDir::new().unwrap();
+    git_cli(&["init"], tmp.path());
+    std::fs::write(tmp.path().join("new.txt"), "n").unwrap();
+    git_cli(&["add", "new.txt"], tmp.path());
+
+    let svc = GitService::new();
+    let out = svc.status(tmp.path(), true).await.unwrap();
+    assert_eq!(out["insertions"], 1);
+    assert_eq!(out["changed_files"], 1);
+}
+
+#[tokio::test]
+async fn checkout_does_not_clobber_path_colliding_unstaged_changes() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+
+    // `git checkout file.txt` would restore the tracked path and erase the
+    // unstaged edit; the ref operand must never be read as a pathspec.
+    std::fs::write(tmp.path().join("file.txt"), "dirty").unwrap();
+
+    let err = svc
+        .checkout(tmp.path(), "file.txt", false)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, devinorium::git::GitError::Other(_)));
+    assert_eq!(
+        std::fs::read_to_string(tmp.path().join("file.txt")).unwrap(),
+        "dirty"
+    );
+}
+
+#[tokio::test]
+async fn checkout_track_switches_to_remote_branch() {
+    let remote = TempDir::new().unwrap();
+    git_cli(&["init", "--bare"], remote.path());
+    let remote_url = remote.path().to_str().unwrap();
+    let tmp = make_repo();
+    git_cli(&["branch", "-M", "main"], tmp.path());
+    git_cli(&["remote", "add", "origin", remote_url], tmp.path());
+    git_cli(&["push", "-u", "origin", "main"], tmp.path());
+
+    // A remote-only branch pushed from a second clone.
+    let other = TempDir::new().unwrap();
+    git_cli(&["clone", remote_url, "."], other.path());
+    git_cli(&["config", "user.email", "test@example.com"], other.path());
+    git_cli(&["config", "user.name", "Test"], other.path());
+    git_cli(&["checkout", "-b", "feature"], other.path());
+    std::fs::write(other.path().join("f.txt"), "f").unwrap();
+    git_cli(&["add", "f.txt"], other.path());
+    git_cli(&["commit", "-m", "f"], other.path());
+    git_cli(&["push", "origin", "feature"], other.path());
+    git_cli(&["fetch", "origin"], tmp.path());
+
+    let svc = GitService::new();
+    svc.checkout(tmp.path(), "origin/feature", true)
+        .await
+        .unwrap();
+    let status = svc.repo_status(tmp.path(), true).await.unwrap();
+    assert_eq!(status.branch, "feature");
+    assert!(tmp.path().join("f.txt").exists());
+}
+
+#[tokio::test]
 async fn commit_creates_commit_and_returns_sha() {
     let tmp = make_repo();
     let svc = GitService::new();
