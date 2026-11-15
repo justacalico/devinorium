@@ -37,8 +37,11 @@ mixin ProjectGroupStore on AppStateBase {
 
   @override
   Future<void> loadProjectGroups() async {
+    final gen = _serverSeq;
     try {
-      _projectGroups = await api.listProjectGroups();
+      final groups = await api.listProjectGroups();
+      if (gen != _serverSeq) return;
+      _projectGroups = groups;
       if (_selectedProjectGroupId != null &&
           _selectedProjectGroupId != kUncategorizedProjectGroupId &&
           !_projectGroups.any((g) => g.id == _selectedProjectGroupId)) {
@@ -46,6 +49,7 @@ mixin ProjectGroupStore on AppStateBase {
       }
       _projectGroupsUnsupported = false;
     } on ApiException catch (e) {
+      if (gen != _serverSeq) return;
       // A non-JSON 404 means the route itself is missing: this backend
       // predates project groups, so hide the UI instead of erroring.
       if (e.statusCode == 404 && e.data == null) {
@@ -56,6 +60,7 @@ mixin ProjectGroupStore on AppStateBase {
         debugLogFailure('projectGroups.load', e);
       }
     } catch (e) {
+      if (gen != _serverSeq) return;
       debugLogFailure('projectGroups.load', e);
     }
     // Any active filter — a group or the uncategorized default — applies
@@ -81,13 +86,19 @@ mixin ProjectGroupStore on AppStateBase {
     // A server switch mid-page-through must not keep pulling the old
     // server's list into the reset state.
     final seq = _serverSeq;
+    var stalls = 0;
     try {
       while (_projectsHasMore && _serverSeq == seq) {
         final before = _projectsOffset;
         await loadMoreProjects();
-        // A scroll-triggered load may already be in flight; stop rather
-        // than spin on a no-op call.
-        if (_projectsOffset == before) break;
+        if (_projectsOffset == before) {
+          // A scroll-triggered page may still be in flight, which makes
+          // loadMoreProjects a no-op; give it a moment, then retry.
+          if (!_loadingMoreProjects || ++stalls > 20) break;
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        } else {
+          stalls = 0;
+        }
       }
     } catch (_) {
       // Keep whatever pages loaded; the filter just covers those.

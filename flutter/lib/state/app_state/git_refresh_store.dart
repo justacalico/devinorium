@@ -45,7 +45,13 @@ mixin GitRefreshStore on AppStateBase {
     } catch (e) {
       if (gen != _serverSeq) return;
       _checkAuthFailure(e);
-      _gitRepoInfo.remove(projectId);
+      // Only a real "not a repo" answer clears the state; a transient
+      // failure keeps the last known info so the branch toolbar stays put.
+      if (e is ApiException && e.statusCode == 404) {
+        _gitRepoInfo.remove(projectId);
+      } else {
+        debugLogFailure('gitRefresh.repoStatus', e);
+      }
     }
     notifyListeners();
   }

@@ -27,6 +27,9 @@ mixin ThreadListStore on AppStateBase {
   final Map<int, bool> _loadingMoreProjectThreads = {};
   @override
   List<ThreadGroup> _groups = [];
+  // Bumped by openThread and createNewThread so the last navigation wins:
+  // a slower earlier open cannot overwrite the store the user picked last.
+  int _threadNavSeq = 0;
   @override
   String? _activeThreadId;
   @override
@@ -92,8 +95,19 @@ mixin ThreadListStore on AppStateBase {
   }
 
   @override
+  bool _userThreadsResetPending = false;
+  @override
+  final Set<int> _projectThreadsResetPending = {};
+
+  @override
   Future<void> _loadUserThreadsChunk({bool reset = false}) async {
     if (reset) {
+      if (_loadingMoreUserThreads) {
+        // Zeroing the offset now would corrupt the in-flight page; run the
+        // reset once it settles.
+        _userThreadsResetPending = true;
+        return;
+      }
       _userThreadsOffset = 0;
       _userThreadsHasMore = true;
     }
@@ -121,6 +135,10 @@ mixin ThreadListStore on AppStateBase {
       notifyListeners();
     } finally {
       _loadingMoreUserThreads = false;
+      if (_userThreadsResetPending) {
+        _userThreadsResetPending = false;
+        unawaited(_loadUserThreadsChunk(reset: true));
+      }
     }
   }
 
@@ -130,6 +148,10 @@ mixin ThreadListStore on AppStateBase {
     bool reset = false,
   }) async {
     if (reset) {
+      if (_loadingMoreProjectThreads[projectId] ?? false) {
+        _projectThreadsResetPending.add(projectId);
+        return;
+      }
       _projectThreadOffsets[projectId] = 0;
       _projectThreadsHasMore[projectId] = true;
     }
@@ -156,6 +178,9 @@ mixin ThreadListStore on AppStateBase {
       notifyListeners();
     } finally {
       _loadingMoreProjectThreads[projectId] = false;
+      if (_projectThreadsResetPending.remove(projectId)) {
+        unawaited(_loadProjectThreadsChunk(projectId, reset: true));
+      }
     }
   }
 
@@ -197,11 +222,14 @@ mixin ThreadListStore on AppStateBase {
 
   @override
   Future<void> refreshThreadsAndGroups() async {
+    final gen = _serverSeq;
     await Future.wait([
       _loadUserThreadsChunk(reset: true),
       (() async {
         try {
-          _groups = await api.listThreadGroups();
+          final groups = await api.listThreadGroups();
+          if (gen != _serverSeq) return;
+          _groups = groups;
         } catch (e) {
           debugLogFailure('threadList.listThreadGroups', e);
         }
@@ -235,8 +263,10 @@ mixin ThreadListStore on AppStateBase {
       return;
     }
 
+    final gen = _serverSeq;
     try {
       final running = await api.getThreadRuns();
+      if (gen != _serverSeq) return;
       final loaded = <String>{for (final t in _threads) t.id};
       _runningThreadIds
         ..clear()
@@ -379,13 +409,14 @@ mixin ThreadListStore on AppStateBase {
     _threadReferences = [];
     _machineReferences = [];
     notifyListeners();
+    final nav = ++_threadNavSeq;
     final gen = _serverSeq;
     try {
       final provider = selectedProvider;
       // Switch the catalog before creating so the stored model is one the
       // provider actually offers.
       await ensureModelsFor(provider);
-      if (gen != _serverSeq) return;
+      if (nav != _threadNavSeq || gen != _serverSeq) return;
       final model = _selectedModel;
       final reasoning = _selectedReasoning;
       final t = await api.createThread(
@@ -396,7 +427,7 @@ mixin ThreadListStore on AppStateBase {
         permissionMode: _selectedPermission,
         reasoningEffort: reasoning.isEmpty ? null : reasoning,
       );
-      if (gen != _serverSeq) return;
+      if (nav != _threadNavSeq || gen != _serverSeq) return;
       final store = _createStore(
         t.id,
         projectId: targetId,
@@ -409,7 +440,7 @@ mixin ThreadListStore on AppStateBase {
       _threadStores[t.id] = store;
       _setActiveStore(store);
       await store.load();
-      if (gen != _serverSeq) return;
+      if (nav != _threadNavSeq || gen != _serverSeq) return;
       await refreshThreadsAndGroups();
     } catch (e) {
       debugLogFailure('threadList.createNewThread', e);
@@ -426,6 +457,7 @@ mixin ThreadListStore on AppStateBase {
     _activeThreadId = id;
     _threadOpening = true;
     notifyListeners();
+    final nav = ++_threadNavSeq;
     final gen = _serverSeq;
     try {
       // The detail fetch watermarks the thread as seen server-side; the
@@ -434,7 +466,7 @@ mixin ThreadListStore on AppStateBase {
         api.getThread(id, includeMessages: false),
         api.getThreadProject(id),
       ]);
-      if (gen != _serverSeq) return;
+      if (nav != _threadNavSeq || gen != _serverSeq) return;
       final detail = results[0] as ThreadDetail;
       _mergeThreads([detail.thread]);
       _setThreadUnread(id, false);
@@ -456,7 +488,7 @@ mixin ThreadListStore on AppStateBase {
       // Load the threads list for the active project.
       _globalError = '';
       await refreshThreadsAndGroups();
-      if (gen != _serverSeq) return;
+      if (nav != _threadNavSeq || gen != _serverSeq) return;
 
       // Dispose the outgoing store first: a still-pending send restores its
       // text into previous.composerText and the draft map, so the
@@ -486,14 +518,14 @@ mixin ThreadListStore on AppStateBase {
 
       // If the backend is already running this thread, reconnect to it.
       await store.resume();
-      if (gen != _serverSeq) return;
+      if (nav != _threadNavSeq || gen != _serverSeq) return;
 
       final currentDetail = store.detail.valueOrNull;
       if (currentDetail != null &&
           currentDetail.totalMessages > 0 &&
           currentDetail.messages.isEmpty) {
         await store.ensureInitialMessagesLoaded();
-        if (gen != _serverSeq) return;
+        if (nav != _threadNavSeq || gen != _serverSeq) return;
       }
 
       if (stopwatch != null && store.globalError.isEmpty) {
@@ -504,12 +536,18 @@ mixin ThreadListStore on AppStateBase {
     } catch (e) {
       stopwatch?.stop();
       debugLogFailure('threadList.openThread', e, threadId: id);
-      if (gen == _serverSeq && !_checkAuthFailure(e)) {
+      if (nav == _threadNavSeq &&
+          gen == _serverSeq &&
+          !_checkAuthFailure(e)) {
         _globalError = '$e';
         notifyListeners();
       }
     } finally {
-      _threadOpening = false;
+      // A superseded open must not clear the flag while its replacement
+      // is still in flight.
+      if (nav == _threadNavSeq) {
+        _threadOpening = false;
+      }
     }
   }
 

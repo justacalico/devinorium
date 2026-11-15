@@ -230,7 +230,7 @@ class _FilesPanelBodyState extends State<_FilesPanelBody> {
       MaterialPageRoute<void>(
         builder: (_) => FileViewerPage(
           path: state.filesScopedPath(node.fullPathString),
-          projectId: state.activeProjectId,
+          projectId: state.filesApiProjectId,
           threadId: state.filesApiThreadId,
           gitStatus: node.entry.gitStatus,
         ),

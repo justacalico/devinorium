@@ -182,6 +182,10 @@ class ThreadStore {
   /// drop the token and route to login instead of a dead banner.
   VoidCallback? onAuthFailure;
 
+  /// Called when list-level thread metadata (ordering, last-message
+  /// preview) may have changed so the app can refresh the sidebar list.
+  VoidCallback? onThreadsListRefresh;
+
   // ---- getters ----
 
   ThreadStoreStatus get status => _status;
@@ -1743,7 +1747,6 @@ class ThreadStore {
   }
 
   void _refreshThreadsList() {
-    // Keep the thread list in sync without awaiting.
-    unawaited(api.listThreads().then((_) {}, onError: (_) {}));
+    onThreadsListRefresh?.call();
   }
 }

@@ -28,20 +28,30 @@ mixin ProjectStore on AppStateBase {
   bool get hasMoreProjects => _projectsHasMore;
   @override
   bool get isLoadingMoreProjects => _loadingMoreProjects;
+  // Bumped by loadProjects so an in-flight loadMoreProjects cannot merge a
+  // stale page into (or advance the offset past) the freshly replaced list.
+  @override
+  int _projectsListSeq = 0;
+
   @override
   Future<void> loadProjects() async {
     _projectsOffset = 0;
     _projectsHasMore = true;
+    final listSeq = ++_projectsListSeq;
+    final gen = _serverSeq;
     try {
       final chunk = await api.listProjects(limit: _projectChunkSize, offset: 0);
+      if (listSeq != _projectsListSeq || gen != _serverSeq) return;
       _projects = chunk;
       _projectsOffset = chunk.length;
       _projectsHasMore = chunk.length == _projectChunkSize;
+      _clearKeyedError('projects');
     } catch (e) {
+      if (gen != _serverSeq) return;
       _checkAuthFailure(e);
-      _projects = [];
-      _projectsOffset = 0;
-      _projectsHasMore = false;
+      // Keep the last known list on a transient failure rather than
+      // emptying the sidebar.
+      _setKeyedError('projects', '$e');
     }
     // Older servers have no project-groups endpoint; keep the project list
     // working and leave the filter empty.
@@ -54,16 +64,27 @@ mixin ProjectStore on AppStateBase {
     if (!_projectsHasMore || _loadingMoreProjects) return;
     _loadingMoreProjects = true;
     notifyListeners();
+    final listSeq = _projectsListSeq;
+    final gen = _serverSeq;
     try {
       final chunk = await api.listProjects(
         limit: _projectChunkSize,
         offset: _projectsOffset,
       );
+      if (listSeq != _projectsListSeq || gen != _serverSeq) return;
       final existing = <int>{for (final p in _projects) p.id};
       final fresh = chunk.where((p) => !existing.contains(p.id)).toList();
       _projects = [..._projects, ...fresh];
-      _projectsOffset += fresh.length;
+      // The offset is a server-side position: it must advance past every
+      // fetched row, not just the new ones, or a page of duplicates would
+      // re-request itself forever.
+      _projectsOffset += chunk.length;
       _projectsHasMore = chunk.length == _projectChunkSize;
+      _clearKeyedError('projects');
+    } catch (e) {
+      if (gen != _serverSeq) return;
+      _checkAuthFailure(e);
+      _setKeyedError('projects', '$e');
     } finally {
       _loadingMoreProjects = false;
       notifyListeners();

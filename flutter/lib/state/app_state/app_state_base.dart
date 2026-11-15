@@ -61,6 +61,15 @@ abstract class AppStateBase extends ChangeNotifier {
   set _filesTreeRoot(FileTreeNode value);
   String? get _filesScopeKey;
   set _filesScopeKey(String? value);
+  String? get _filesScopeThreadId;
+  set _filesScopeThreadId(String? value);
+  int? get _filesScopeProjectId;
+  set _filesScopeProjectId(int? value);
+  int get _projectsListSeq;
+  set _projectsListSeq(int value);
+  bool get _userThreadsResetPending;
+  set _userThreadsResetPending(bool value);
+  Set<int> get _projectThreadsResetPending;
   List<ThreadGroup> get _groups;
   set _groups(List<ThreadGroup> value);
   List<ProjectGroup> get _projectGroups;
@@ -414,6 +423,7 @@ abstract class AppStateBase extends ChangeNotifier {
   String? get filesScopeKey;
   String? get activeFilesScopeKey;
   String? get filesApiThreadId;
+  int? get filesApiProjectId;
   String filesScopedPath(String path);
   List<FileTreeRow> get filesTreeRows;
   String get filesError;
