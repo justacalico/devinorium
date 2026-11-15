@@ -525,6 +525,36 @@ struct HookReply {
     context: String,
 }
 
+/// Kills a hook's process group on drop unless disarmed, covering paths the
+/// timeout never sees: an aborted send, a dropped future, an early return.
+#[cfg(unix)]
+struct HookProcessGroup(Option<rustix::process::Pid>);
+
+#[cfg(unix)]
+impl HookProcessGroup {
+    fn new(child: &tokio::process::Child) -> Self {
+        Self(
+            child
+                .id()
+                .and_then(|i| i32::try_from(i).ok())
+                .and_then(rustix::process::Pid::from_raw),
+        )
+    }
+
+    fn disarm(&mut self) {
+        self.0 = None;
+    }
+}
+
+#[cfg(unix)]
+impl Drop for HookProcessGroup {
+    fn drop(&mut self) {
+        if let Some(pid) = self.0 {
+            let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
+        }
+    }
+}
+
 async fn run_one_hook(hook: &HookCommand, event: &str, cwd: &Path, payload: &[u8]) -> HookReply {
     let shell = if cfg!(windows) { "cmd" } else { "sh" };
     let flag = if cfg!(windows) { "/C" } else { "-c" };
@@ -542,7 +572,8 @@ async fn run_one_hook(hook: &HookCommand, event: &str, cwd: &Path, payload: &[u8
         .env("DEVINORIUM_HOOK_EVENT", event)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
     // A fresh process group so a timed-out hook takes its whole pipeline
     // down, not just the `sh` wrapper.
     #[cfg(unix)]
@@ -557,16 +588,20 @@ async fn run_one_hook(hook: &HookCommand, event: &str, cwd: &Path, payload: &[u8
             };
         }
     };
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        let _ = stdin.write_all(payload).await;
-        // Dropping stdin signals EOF so the hook can finish reading.
-    }
+    // Dropping the guard (cancel, panic, early return) kills the whole
+    // process group so an abandoned hook cannot orphan its pipeline.
+    #[cfg(unix)]
+    let mut group_kill = HookProcessGroup::new(&child);
     let capped = tokio::time::timeout(hook.timeout, async {
-        use tokio::io::AsyncReadExt;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let mut out_pipe = child.stdout.take().unwrap().take(MAX_HOOK_OUTPUT as u64);
         let mut err_pipe = child.stderr.take().unwrap().take(MAX_HOOK_OUTPUT as u64);
-        let (out_res, err_res, status) = tokio::join!(
+        // The payload write runs concurrently with the output drain and
+        // under the timeout: a payload past the pipe buffer would deadlock
+        // a hook that writes before reading stdin, and one that never
+        // reads would hang the run forever without the cap.
+        let stdin = child.stdin.take();
+        let (out_res, err_res, status, ()) = tokio::join!(
             async {
                 let mut b = Vec::new();
                 out_pipe.read_to_end(&mut b).await.map(|_| b)
@@ -576,21 +611,28 @@ async fn run_one_hook(hook: &HookCommand, event: &str, cwd: &Path, payload: &[u8
                 err_pipe.read_to_end(&mut b).await.map(|_| b)
             },
             child.wait(),
+            async {
+                if let Some(mut stdin) = stdin {
+                    let _ = stdin.write_all(payload).await;
+                    // Dropping stdin signals EOF so the hook can finish
+                    // reading.
+                }
+            },
         );
         (out_res, err_res, status)
     })
     .await;
     let (out_res, err_res, status) = match capped {
-        Ok(v) => v,
-        Err(_) => {
+        Ok(v) => {
+            // The child already exited; a stale group kill could hit a
+            // recycled process group.
             #[cfg(unix)]
-            if let Some(pid) = child
-                .id()
-                .and_then(|i| i32::try_from(i).ok())
-                .and_then(rustix::process::Pid::from_raw)
-            {
-                let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
-            }
+            group_kill.disarm();
+            v
+        }
+        Err(_) => {
+            // The guard's Drop sends the process-group kill; `kill` takes
+            // care of the wrapper itself.
             let _ = child.kill().await;
             tracing::warn!(plugin = %hook.plugin, event, "plugin hook timed out");
             return HookReply {
