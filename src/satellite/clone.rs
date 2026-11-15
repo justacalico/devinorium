@@ -68,7 +68,7 @@ async fn clone(
     let Some(git_bin) = state.git.binary().map(|b| b.to_path_buf()) else {
         return clone_error(CloneError::NotEnabled);
     };
-    let mut cmd = Command::new(git_bin);
+    let mut cmd = Command::new(&git_bin);
     cmd.env("LC_ALL", "C")
         .env("GCM_INTERACTIVE", "never")
         .env("GIT_TERMINAL_PROMPT", "0")
@@ -78,9 +78,25 @@ async fn clone(
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .arg("clone")
-        .arg("--")
-        .arg(&parsed.clean_url)
-        .arg(&resolved_target);
+        .arg("--");
+
+    // Credentials embedded in the URL go into an env-only http.extraHeader
+    // so they never reach .git/config or the HEAD reflog.
+    let (clone_url, url_auth) = crate::git::clone::split_url_credentials(&parsed.clean_url);
+    cmd.arg(&clone_url).arg(&resolved_target);
+    if let Some(header) = &url_auth {
+        let scheme = if clone_url.starts_with("http://") {
+            "http"
+        } else {
+            "https"
+        };
+        cmd.env("GIT_CONFIG_COUNT", "1")
+            .env(
+                "GIT_CONFIG_KEY_0",
+                format!("http.{scheme}://{}/.extraHeader", parsed.host_with_port),
+            )
+            .env("GIT_CONFIG_VALUE_0", header);
+    }
 
     if let Err(e) = run_git_clone(&mut cmd, Duration::from_secs(300)).await {
         let _ = tokio::fs::remove_dir_all(&resolved_target).await;
