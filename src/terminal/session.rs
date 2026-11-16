@@ -61,11 +61,21 @@ impl TerminalSession {
         let shutdown = Arc::new(AtomicBool::new(false));
         let last_activity = Arc::new(AtomicU64::new(now_millis()));
 
-        let reader = master
+        let reader = match master
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .try_clone_reader()
-            .context("clone pty reader")?;
+        {
+            Ok(r) => r,
+            Err(e) => {
+                // The child is already running; dropping it here would
+                // orphan the process.
+                let mut guard = child.lock().unwrap_or_else(|p| p.into_inner());
+                let _ = guard.kill();
+                let _ = guard.wait();
+                return Err(e).context("clone pty reader");
+            }
+        };
 
         let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
 
@@ -139,7 +149,14 @@ impl TerminalSession {
                 let mut interval = tokio::time::interval(Duration::from_millis(100));
                 let code = loop {
                     if shutdown.load(Ordering::SeqCst) {
-                        break 0;
+                        // A natural exit can race the shutdown flag; report
+                        // the real status when the child already reaped.
+                        let mut guard = child.lock().unwrap_or_else(|e| e.into_inner());
+                        break match guard.try_wait() {
+                            Ok(Some(status)) if status.success() => 0,
+                            Ok(Some(status)) => status.exit_code() as i32,
+                            _ => -1,
+                        };
                     }
                     interval.tick().await;
                     let mut guard = child.lock().unwrap_or_else(|e| e.into_inner());
