@@ -709,6 +709,27 @@ fn extract_zip(bytes: &[u8], dest: &Path, entry_point: Option<&str>) -> Result<(
 }
 
 /// The `KEY` when `input` is exactly `${user_config.KEY}` and nothing else.
+/// First `${key}` whose `lookup` cannot resolve it, or the unterminated
+/// `${` tail. Only checks the raw template, so substituted values that
+/// themselves contain `${` do not count.
+fn first_unresolved_token(input: &str, lookup: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    let mut rest = input;
+    while let Some(start) = rest.find("${") {
+        let after = &rest[start + 2..];
+        match after.find('}') {
+            Some(end) => {
+                let key = &after[..end];
+                if lookup(key).is_none() {
+                    return Some(format!("${{{key}}}"));
+                }
+                rest = &after[end + 1..];
+            }
+            None => return Some("${".to_string()),
+        }
+    }
+    None
+}
+
 fn whole_user_config_ref(input: &str) -> Option<&str> {
     input
         .trim()
@@ -799,7 +820,12 @@ pub fn install_bundle(
         }
     };
 
-    let command = substitute(config.command.as_deref().unwrap_or("").trim(), &lookup);
+    let raw_command = config.command.as_deref().unwrap_or("").trim();
+    if let Some(tok) = first_unresolved_token(raw_command, &lookup) {
+        let _ = std::fs::remove_dir_all(&dest);
+        return Err(format!("unresolved placeholder {tok} in command"));
+    }
+    let command = substitute(raw_command, &lookup);
     // A whole-arg `${user_config.x}` holding an array expands to one arg
     // per element, matching the spec's multi-select semantics. An unset
     // optional value drops the arg rather than passing the token verbatim.
@@ -1010,6 +1036,22 @@ mod tests {
                 .to_string_lossy()
                 .to_string()
         );
+    }
+
+    #[test]
+    fn install_rejects_unresolved_command_placeholder() {
+        // An optional user_config left unset must not pass the raw token
+        // through to spawn; a whole-arg reference is dropped but `command`
+        // has no fallback, so install fails instead of starting ${...}.
+        let dir = tempfile::tempdir().unwrap();
+        let m = r#"{"manifest_version":"0.3","name":"cfg","version":"1","description":"d",
+            "author":{"name":"a"},
+            "server":{"type":"node","entry_point":"s.js",
+            "mcp_config":{"command":"${user_config.cmd}","args":["s.js"]}},
+            "user_config":{"cmd":{"type":"string"}}}"#;
+        let bytes = bundle(m, &[("s.js", b"x")]);
+        let err = install_bundle(&bytes, dir.path(), dir.path(), &Map::new()).unwrap_err();
+        assert!(err.contains("unresolved"), "{err}");
     }
 
     #[test]
