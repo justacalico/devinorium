@@ -129,15 +129,18 @@ mixin ThreadListStore on AppStateBase {
       _userThreadsHasMore = chunk.length == _threadChunkSize;
       _clearKeyedError('threads');
     } catch (e) {
+      if (gen != _serverSeq) return;
       _checkAuthFailure(e);
       _setKeyedError('threads', '$e');
       debugLogFailure('threadList.loadUserThreadsChunk', e);
       notifyListeners();
     } finally {
-      _loadingMoreUserThreads = false;
-      if (_userThreadsResetPending) {
-        _userThreadsResetPending = false;
-        unawaited(_loadUserThreadsChunk(reset: true));
+      if (gen == _serverSeq) {
+        _loadingMoreUserThreads = false;
+        if (_userThreadsResetPending) {
+          _userThreadsResetPending = false;
+          unawaited(_loadUserThreadsChunk(reset: true));
+        }
       }
     }
   }
@@ -172,14 +175,17 @@ mixin ThreadListStore on AppStateBase {
       _projectThreadsHasMore[projectId] = chunk.length == _threadChunkSize;
       _clearKeyedError('threads');
     } catch (e) {
+      if (gen != _serverSeq) return;
       _checkAuthFailure(e);
       _setKeyedError('threads', '$e');
       debugLogFailure('threadList.loadProjectThreadsChunk', e);
       notifyListeners();
     } finally {
-      _loadingMoreProjectThreads[projectId] = false;
-      if (_projectThreadsResetPending.remove(projectId)) {
-        unawaited(_loadProjectThreadsChunk(projectId, reset: true));
+      if (gen == _serverSeq) {
+        _loadingMoreProjectThreads[projectId] = false;
+        if (_projectThreadsResetPending.remove(projectId)) {
+          unawaited(_loadProjectThreadsChunk(projectId, reset: true));
+        }
       }
     }
   }
@@ -274,6 +280,7 @@ mixin ThreadListStore on AppStateBase {
     } catch (e) {
       // A failed poll must not erase state the lifecycle stream already
       // delivered; keep the last known ids instead.
+      if (gen != _serverSeq) return;
       _checkAuthFailure(e);
       debugLogFailure('threadList.refreshRunningThreads', e);
     }
@@ -294,8 +301,10 @@ mixin ThreadListStore on AppStateBase {
   Future<void> renameThread(String id, String title) async {
     _globalError = '';
     notifyListeners();
+    final gen = _serverSeq;
     try {
       await api.renameThread(id, title);
+      if (gen != _serverSeq) return;
       final index = _threads.indexWhere((t) => t.id == id);
       if (index >= 0) {
         _threads = [
@@ -312,6 +321,7 @@ mixin ThreadListStore on AppStateBase {
       _globalError = '';
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       debugLogFailure('threadList.renameThread', e, threadId: id);
       _globalError = '$e';
       notifyListeners();
@@ -322,8 +332,10 @@ mixin ThreadListStore on AppStateBase {
   Future<void> pinThread(String id, bool pinned) async {
     _globalError = '';
     notifyListeners();
+    final gen = _serverSeq;
     try {
       final updated = await api.pinThread(id, pinned);
+      if (gen != _serverSeq) return;
       final index = _threads.indexWhere((t) => t.id == id);
       if (index >= 0) {
         _threads = [..._threads];
@@ -336,6 +348,7 @@ mixin ThreadListStore on AppStateBase {
       _globalError = '';
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       debugLogFailure('threadList.pinThread', e, threadId: id);
       _globalError = '$e';
       notifyListeners();
@@ -346,8 +359,10 @@ mixin ThreadListStore on AppStateBase {
   Future<String?> shareThread(String id) async {
     _globalError = '';
     notifyListeners();
+    final gen = _serverSeq;
     try {
       final updated = await api.shareThread(id);
+      if (gen != _serverSeq) return null;
       final index = _threads.indexWhere((t) => t.id == id);
       if (index >= 0) {
         _threads = [..._threads];
@@ -358,6 +373,7 @@ mixin ThreadListStore on AppStateBase {
       final shareId = updated.shareId;
       return shareId == null ? null : await api.shareUrl(shareId);
     } catch (e) {
+      if (gen != _serverSeq) return null;
       debugLogFailure('threadList.shareThread', e, threadId: id);
       _globalError = '$e';
       notifyListeners();
@@ -369,8 +385,10 @@ mixin ThreadListStore on AppStateBase {
   Future<void> unshareThread(String id) async {
     _globalError = '';
     notifyListeners();
+    final gen = _serverSeq;
     try {
       final updated = await api.unshareThread(id);
+      if (gen != _serverSeq) return;
       final index = _threads.indexWhere((t) => t.id == id);
       if (index >= 0) {
         _threads = [..._threads];
@@ -379,6 +397,7 @@ mixin ThreadListStore on AppStateBase {
       _globalError = '';
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       debugLogFailure('threadList.unshareThread', e, threadId: id);
       _globalError = '$e';
       notifyListeners();
@@ -443,6 +462,7 @@ mixin ThreadListStore on AppStateBase {
       if (nav != _threadNavSeq || gen != _serverSeq) return;
       await refreshThreadsAndGroups();
     } catch (e) {
+      if (gen != _serverSeq) return;
       debugLogFailure('threadList.createNewThread', e);
       _globalError = '$e';
       notifyListeners();
@@ -536,9 +556,7 @@ mixin ThreadListStore on AppStateBase {
     } catch (e) {
       stopwatch?.stop();
       debugLogFailure('threadList.openThread', e, threadId: id);
-      if (nav == _threadNavSeq &&
-          gen == _serverSeq &&
-          !_checkAuthFailure(e)) {
+      if (nav == _threadNavSeq && gen == _serverSeq && !_checkAuthFailure(e)) {
         _globalError = '$e';
         notifyListeners();
       }
@@ -555,10 +573,13 @@ mixin ThreadListStore on AppStateBase {
   Future<void> saveThreadSettings() async {
     final store = _activeStore;
     if (store == null) return;
+    final gen = _serverSeq;
     try {
       await store.saveSettings();
+      if (gen != _serverSeq) return;
       await refreshThreadsAndGroups();
     } catch (e) {
+      if (gen != _serverSeq) return;
       debugLogFailure('threadList.saveThreadSettings', e);
       _globalError = '$e';
       notifyListeners();
@@ -567,8 +588,10 @@ mixin ThreadListStore on AppStateBase {
 
   @override
   Future<bool> deleteThread(String id) async {
+    final gen = _serverSeq;
     try {
       await api.deleteThread(id);
+      if (gen != _serverSeq) return true;
       _saveDraft(id, '');
       _dropRunEventState(id);
       final store = _threadStores.remove(id);
@@ -579,6 +602,7 @@ mixin ThreadListStore on AppStateBase {
       await refreshThreadsAndGroups();
       return true;
     } catch (e) {
+      if (gen != _serverSeq) return true;
       debugLogFailure('threadList.deleteThread', e, threadId: id);
       _globalError = '$e';
       notifyListeners();
@@ -588,10 +612,13 @@ mixin ThreadListStore on AppStateBase {
 
   @override
   Future<void> deleteThreadGroup(int id) async {
+    final gen = _serverSeq;
     try {
       await api.deleteThreadGroup(id);
+      if (gen != _serverSeq) return;
       await refreshThreadsAndGroups();
     } catch (e) {
+      if (gen != _serverSeq) return;
       debugLogFailure('threadList.deleteThreadGroup', e);
       _globalError = '$e';
       notifyListeners();
@@ -602,9 +629,11 @@ mixin ThreadListStore on AppStateBase {
   Future<void> loadMoreMessages() async {
     final store = _activeStore;
     if (store == null) return;
+    final gen = _serverSeq;
     try {
       await store.loadMoreMessages();
     } catch (e) {
+      if (gen != _serverSeq) return;
       debugLogFailure('threadList.loadMoreMessages', e);
       _globalError = '$e';
       notifyListeners();
@@ -619,10 +648,12 @@ mixin ThreadListStore on AppStateBase {
       _threadStores[id] = store;
     }
     _setActiveStore(store);
+    final gen = _serverSeq;
     try {
       await store.resume();
       unawaited(ensureModelsFor(store.selectedProvider));
     } catch (e) {
+      if (gen != _serverSeq) return;
       debugLogFailure('threadList.resumeThread', e, threadId: id);
       _globalError = '$e';
       notifyListeners();

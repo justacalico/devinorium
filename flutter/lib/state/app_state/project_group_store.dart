@@ -151,12 +151,14 @@ mixin ProjectGroupStore on AppStateBase {
   Future<void> createProjectGroup(String name) async {
     _globalError = '';
     notifyListeners();
+    final gen = _serverSeq;
     try {
       final assignId = _groupAssignProjectId;
       final group = await api.createProjectGroup(
         name: name,
         projectIds: assignId == null ? null : [assignId],
       );
+      if (gen != _serverSeq) return;
       _projectGroups = [..._projectGroups, group];
       if (assignId != null) {
         _replaceProjectGroupId(assignId, group.id);
@@ -168,6 +170,7 @@ mixin ProjectGroupStore on AppStateBase {
       _newGroupFromManage = false;
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -177,9 +180,11 @@ mixin ProjectGroupStore on AppStateBase {
   Future<void> renameProjectGroup(int id, String name) async {
     _globalError = '';
     notifyListeners();
+    final gen = _serverSeq;
     try {
       final trimmed = name.trim();
       await api.renameProjectGroup(id, trimmed);
+      if (gen != _serverSeq) return;
       final index = _projectGroups.indexWhere((g) => g.id == id);
       if (index >= 0) {
         _projectGroups = [..._projectGroups];
@@ -190,6 +195,7 @@ mixin ProjectGroupStore on AppStateBase {
       _globalError = '';
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -199,8 +205,10 @@ mixin ProjectGroupStore on AppStateBase {
   Future<void> deleteProjectGroup(int id) async {
     _globalError = '';
     notifyListeners();
+    final gen = _serverSeq;
     try {
       await api.deleteProjectGroup(id);
+      if (gen != _serverSeq) return;
       _projectGroups = _projectGroups.where((g) => g.id != id).toList();
       if (_selectedProjectGroupId == id) {
         _selectedProjectGroupId = null;
@@ -214,6 +222,7 @@ mixin ProjectGroupStore on AppStateBase {
       _globalError = '';
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -223,8 +232,10 @@ mixin ProjectGroupStore on AppStateBase {
   Future<void> setProjectGroup(int projectId, int? groupId) async {
     _globalError = '';
     notifyListeners();
+    final gen = _serverSeq;
     try {
       final updated = await api.setProjectGroup(projectId, groupId);
+      if (gen != _serverSeq) return;
       final index = _projects.indexWhere((p) => p.id == projectId);
       if (index >= 0) {
         _projects = [..._projects];
@@ -232,6 +243,7 @@ mixin ProjectGroupStore on AppStateBase {
       }
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }

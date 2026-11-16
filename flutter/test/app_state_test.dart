@@ -904,6 +904,163 @@ void main() {
         expect(state.composerText, '');
       },
     );
+
+    AppState editorStateWithDirtyTab() {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'path': '/x/a.txt',
+              'mime': 'text/plain',
+              'size': 2,
+              'base64': '',
+              'text': 'hi',
+              'sha256': 's',
+            }),
+          ]),
+        ),
+      );
+      return AppState.test(
+        api: state.api,
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+      );
+    }
+
+    test('logout is blocked by dirty editor tabs', () async {
+      SharedPreferences.setMockInitialValues({});
+      final base = editorStateWithDirtyTab();
+      await base.openEditorFile('a.txt');
+      base.setEditorTabText(base.editorTabs.single.path, 'changed');
+      expect(base.hasDirtyEditorTabs, isTrue);
+
+      await base.logout();
+      expect(base.globalError, contains('unsaved'));
+      expect(base.editorTabs, hasLength(1));
+      expect(base.activeServerId, 'test');
+    });
+
+    test(
+      'removeServer of the active profile is blocked by dirty editor tabs',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final base = editorStateWithDirtyTab();
+        await base.openEditorFile('a.txt');
+        base.setEditorTabText(base.editorTabs.single.path, 'changed');
+
+        await base.removeServer('test');
+        expect(base.globalError, contains('unsaved'));
+        expect(base.activeServerId, 'test');
+        expect(base.serverProfiles, isNotEmpty);
+        expect(base.editorTabs, hasLength(1));
+      },
+    );
+
+    test('forced logout completes despite dirty editor tabs', () async {
+      SharedPreferences.setMockInitialValues({});
+      final base = editorStateWithDirtyTab();
+      await base.openEditorFile('a.txt');
+      base.setEditorTabText(base.editorTabs.single.path, 'changed');
+      expect(base.hasDirtyEditorTabs, isTrue);
+
+      await base.logout(force: true);
+      expect(base.user, isNull);
+      expect(base.editorTabs, isEmpty);
+      expect(base.activeServerId, isNull);
+    });
+
+    test('server removal drops the cached git connections view', () async {
+      SharedPreferences.setMockInitialValues({});
+      final base = AppState.test(
+        api: ApiService(
+          client: ApiClient.withClient(MockClient((_) async => _json(404, {}))),
+        ),
+        gitConnections: const [
+          GitConnection(id: 'gitlab', name: 'GitLab', enabled: true),
+        ],
+      );
+      expect(base.gitConnections, hasLength(1));
+
+      await base.removeServer('test');
+      expect(base.gitConnections, isEmpty);
+    });
+
+    test(
+      'server removal clears scoped roots and ignores in-flight loads',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final completer = Completer<http.Response>();
+        final state = AppState(
+          api: ApiService(
+            client: ApiClient.withClient(
+              MockClient((req) async {
+                if (req.url.path == '/api/settings/clone-root') {
+                  return completer.future;
+                }
+                return _json(404, {'error': 'unexpected ${req.url.path}'});
+              }),
+            ),
+          ),
+        );
+        final base = AppState.test(
+          api: state.api,
+          cloneRoot: '/keep',
+          worktreeRoot: '/keep-wt',
+          projectRoot: '/keep-p',
+        );
+        final load = base.loadCloneRoot();
+        await pumpEventQueue();
+
+        await base.removeServer('test');
+        expect(base.cloneRoot, isNull);
+        expect(base.worktreeRoot, isNull);
+        expect(base.projectRoot, isNull);
+
+        completer.complete(_json(200, {'path': '/old/clones'}));
+        await load;
+        await pumpEventQueue();
+        expect(base.cloneRoot, isNull);
+      },
+    );
+
+    test('in-flight user list does not write after server removal', () async {
+      SharedPreferences.setMockInitialValues({});
+      final completer = Completer<http.Response>();
+      final state = AppState(
+        api: ApiService(
+          client: ApiClient.withClient(
+            MockClient((req) async {
+              if (req.url.path == '/api/users') {
+                return completer.future;
+              }
+              return _json(404, {'error': 'unexpected ${req.url.path}'});
+            }),
+          ),
+        ),
+      );
+      final base = AppState.test(api: state.api);
+      final load = base.loadUsers();
+      await pumpEventQueue();
+
+      await base.removeServer('test');
+      completer.complete(
+        _json(200, [
+          {
+            'id': 9,
+            'username': 'stale',
+            'role': 'user',
+            'totp_enabled': false,
+            'provider_id': 'devin-cli',
+            'provider_command': 'devin',
+          },
+        ]),
+      );
+      await load;
+      await pumpEventQueue();
+      expect(base.users, isEmpty);
+    });
   });
 
   group('Projects and threads', () {

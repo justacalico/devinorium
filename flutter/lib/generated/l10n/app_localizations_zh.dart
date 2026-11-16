@@ -2094,6 +2094,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get editorUnsavedDeleteProject => '编辑器有未保存的更改。请先保存或放弃更改，然后再删除此项目。';
 
   @override
+  String get editorUnsavedSignOut => '编辑器有未保存的更改。请先保存或放弃更改，然后再退出登录。';
+
+  @override
+  String get editorUnsavedRemoveServer => '编辑器有未保存的更改。请先保存或放弃更改，然后再移除此服务器。';
+
+  @override
   String get editorUnsavedSwitch => '编辑器有未保存的更改。请先保存或放弃更改，然后再切换。';
 
   @override

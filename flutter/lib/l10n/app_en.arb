@@ -1654,6 +1654,14 @@
   "@editorUnsavedDeleteProject": {
     "description": "Error shown when deleting a project while the editor has unsaved changes"
   },
+  "editorUnsavedSignOut": "Editor has unsaved changes. Save or discard them before signing out.",
+  "@editorUnsavedSignOut": {
+    "description": "Error shown when signing out while the editor has unsaved changes"
+  },
+  "editorUnsavedRemoveServer": "Editor has unsaved changes. Save or discard them before removing this server.",
+  "@editorUnsavedRemoveServer": {
+    "description": "Error shown when removing the active server while the editor has unsaved changes"
+  },
   "editorUnsavedSwitch": "Editor has unsaved changes. Save or discard them before switching.",
   "@editorUnsavedSwitch": {
     "description": "Error shown when switching servers or nodes while the editor has unsaved changes"

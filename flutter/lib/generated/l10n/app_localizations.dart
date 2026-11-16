@@ -3848,6 +3848,18 @@ abstract class AppLocalizations {
   /// **'Editor has unsaved changes. Save or discard them before deleting this project.'**
   String get editorUnsavedDeleteProject;
 
+  /// Error shown when signing out while the editor has unsaved changes
+  ///
+  /// In en, this message translates to:
+  /// **'Editor has unsaved changes. Save or discard them before signing out.'**
+  String get editorUnsavedSignOut;
+
+  /// Error shown when removing the active server while the editor has unsaved changes
+  ///
+  /// In en, this message translates to:
+  /// **'Editor has unsaved changes. Save or discard them before removing this server.'**
+  String get editorUnsavedRemoveServer;
+
   /// Error shown when switching servers or nodes while the editor has unsaved changes
   ///
   /// In en, this message translates to:

@@ -86,8 +86,10 @@ mixin ProjectStore on AppStateBase {
       _checkAuthFailure(e);
       _setKeyedError('projects', '$e');
     } finally {
-      _loadingMoreProjects = false;
-      notifyListeners();
+      if (gen == _serverSeq) {
+        _loadingMoreProjects = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -148,8 +150,10 @@ mixin ProjectStore on AppStateBase {
       notifyListeners();
       return;
     }
+    final gen = _serverSeq;
     try {
       final p = await create();
+      if (gen != _serverSeq) return;
       _projects = [..._projects, p];
       // A project created while a group filter is active joins that group,
       // otherwise it would be invisible in the sidebar. The uncategorized
@@ -158,12 +162,17 @@ mixin ProjectStore on AppStateBase {
       if (gid != null && gid != kUncategorizedProjectGroupId) {
         await setProjectGroup(p.id, gid);
       }
-      closeAllEditorTabs();
-      _activeProjectId = p.id;
-      _setActiveStore(null);
+      if (hasDirtyEditorTabs) {
+        _globalError = appL10n.editorUnsavedNewProject;
+      } else {
+        closeAllEditorTabs();
+        _activeProjectId = p.id;
+        _setActiveStore(null);
+      }
       _page = MainPage.threads;
       await refreshThreadsAndGroups();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -209,11 +218,17 @@ mixin ProjectStore on AppStateBase {
       notifyListeners();
       return;
     }
+    final gen = _serverSeq;
     try {
       await api.deleteProject(id);
+      if (gen != _serverSeq) return;
       _projects = _projects.where((p) => p.id != id).toList();
       if (_activeProjectId == id) {
-        closeAllEditorTabs();
+        if (hasDirtyEditorTabs) {
+          _globalError = appL10n.editorUnsavedDeleteProject;
+        } else {
+          closeAllEditorTabs();
+        }
         _setActiveStore(null);
         if (_projects.isNotEmpty) {
           _activeProjectId = _projects.first.id;
@@ -223,6 +238,7 @@ mixin ProjectStore on AppStateBase {
       }
       await refreshThreadsAndGroups();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -248,9 +264,11 @@ mixin ProjectStore on AppStateBase {
     });
     notifyListeners();
 
+    final gen = _serverSeq;
     try {
       await api.reorderProjects(ids);
     } catch (e) {
+      if (gen != _serverSeq) return;
       _projects = oldProjects;
       _globalError = '$e';
       notifyListeners();
@@ -280,14 +298,20 @@ mixin ProjectStore on AppStateBase {
   Future<void> loadProjectRoot() async {
     _loadingProjectRoot = true;
     notifyListeners();
+    final gen = _serverSeq;
     try {
-      _projectRoot = await api.getProjectRoot();
+      final root = await api.getProjectRoot();
+      if (gen != _serverSeq) return;
+      _projectRoot = root;
       _globalError = '';
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
     } finally {
-      _loadingProjectRoot = false;
-      notifyListeners();
+      if (gen == _serverSeq) {
+        _loadingProjectRoot = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -295,14 +319,20 @@ mixin ProjectStore on AppStateBase {
   Future<void> setProjectRoot(String? path) async {
     _loadingProjectRoot = true;
     notifyListeners();
+    final gen = _serverSeq;
     try {
-      _projectRoot = await api.setProjectRoot(path?.trim());
+      final root = await api.setProjectRoot(path?.trim());
+      if (gen != _serverSeq) return;
+      _projectRoot = root;
       _globalError = '';
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
     } finally {
-      _loadingProjectRoot = false;
-      notifyListeners();
+      if (gen == _serverSeq) {
+        _loadingProjectRoot = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -320,8 +350,10 @@ mixin ProjectStore on AppStateBase {
   Future<void> renameProject(int id, String name) async {
     _globalError = '';
     notifyListeners();
+    final gen = _serverSeq;
     try {
       final updated = await api.renameProject(id, name);
+      if (gen != _serverSeq) return;
       final index = _projects.indexWhere((p) => p.id == id);
       if (index >= 0) {
         _projects = [
@@ -335,6 +367,7 @@ mixin ProjectStore on AppStateBase {
       _globalError = '';
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -344,8 +377,10 @@ mixin ProjectStore on AppStateBase {
   Future<void> pinProject(int id, bool pinned) async {
     _globalError = '';
     notifyListeners();
+    final gen = _serverSeq;
     try {
       final updated = await api.pinProject(id, pinned);
+      if (gen != _serverSeq) return;
       final index = _projects.indexWhere((p) => p.id == id);
       if (index >= 0) {
         _projects = [..._projects];
@@ -360,6 +395,7 @@ mixin ProjectStore on AppStateBase {
       _globalError = '';
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }

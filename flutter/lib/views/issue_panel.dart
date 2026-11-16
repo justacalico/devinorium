@@ -23,22 +23,41 @@ class IssuePanel extends StatefulWidget {
 }
 
 class _IssuePanelState extends State<IssuePanel> {
-  late final IssueProvider _provider;
+  late IssueProvider _provider;
+  late bool _ownsProvider;
 
   @override
   void initState() {
     super.initState();
-    final client = context.read<AppState>().api.client;
-    _provider = widget.provider ??
-        (GitHubIssueProvider.canHandleUrl(widget.url)
-            ? GitHubIssueProvider(client)
-            : GitLabIssueProvider(client));
+    _ownsProvider = widget.provider == null;
+    _provider = _createProvider();
     _provider.load(widget.url);
   }
 
   @override
+  void didUpdateWidget(covariant IssuePanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The panel can be reused with a different URL or provider while
+    // mounted; drop the old state and reload instead of showing stale data.
+    if (oldWidget.url != widget.url || oldWidget.provider != widget.provider) {
+      if (_ownsProvider) _provider.dispose();
+      _ownsProvider = widget.provider == null;
+      _provider = _createProvider();
+      _provider.load(widget.url);
+    }
+  }
+
+  IssueProvider _createProvider() {
+    if (widget.provider != null) return widget.provider!;
+    final client = context.read<AppState>().api.client;
+    return GitHubIssueProvider.canHandleUrl(widget.url)
+        ? GitHubIssueProvider(client)
+        : GitLabIssueProvider(client);
+  }
+
+  @override
   void dispose() {
-    _provider.dispose();
+    if (_ownsProvider) _provider.dispose();
     super.dispose();
   }
 
@@ -72,8 +91,9 @@ class _IssuePanelState extends State<IssuePanel> {
                         Expanded(
                           child: Text(
                             l10n(context).issue,
-                            style: theme.textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.w600),
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                         IconButton(

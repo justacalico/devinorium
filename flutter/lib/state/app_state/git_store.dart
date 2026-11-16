@@ -53,6 +53,7 @@ mixin GitStore on AppStateBase {
   @override
   String? get cloneRepoResult => _cloneRepoResult;
 
+  @override
   void _bumpGitConnections() {
     _gitConnections = List.of(_gitConnections);
     _gitConnectionsView = null;
@@ -114,6 +115,7 @@ mixin GitStore on AppStateBase {
       // ungrouped; patch it here so the project stays visible under an
       // active filter. The check runs against the group captured at call
       // time — the filter may have moved on while the clone was in flight.
+      if (seq != _cloneRepoSeq) return null;
       if (gid != null) {
         var match = _projects.where((p) => p.path == path).firstOrNull;
         if (match == null) {
@@ -246,6 +248,7 @@ mixin GitStore on AppStateBase {
     String? base,
     bool switchBranch = false,
   }) async {
+    final gen = _serverSeq;
     try {
       await api.gitCreateBranch(
         projectId,
@@ -253,6 +256,7 @@ mixin GitStore on AppStateBase {
         base: base,
         switchBranch: switchBranch,
       );
+      if (gen != _serverSeq) return false;
       _globalError = '';
       if (switchBranch) {
         // Switching branches moves HEAD; loaded history is stale.
@@ -264,6 +268,7 @@ mixin GitStore on AppStateBase {
       await loadProjects();
       return true;
     } catch (e) {
+      if (gen != _serverSeq) return false;
       _globalError = '$e';
       notifyListeners();
       return false;
@@ -276,8 +281,10 @@ mixin GitStore on AppStateBase {
     String refName, {
     bool track = false,
   }) async {
+    final gen = _serverSeq;
     try {
       await api.gitCheckout(projectId, refName, track: track);
+      if (gen != _serverSeq) return false;
       _globalError = '';
       // A checkout moves HEAD; the panel's loaded history is stale.
       invalidateGitHistory();
@@ -287,6 +294,7 @@ mixin GitStore on AppStateBase {
       unawaited(refreshLinkedMergeRequest());
       return true;
     } catch (e) {
+      if (gen != _serverSeq) return false;
       _globalError = '$e';
       notifyListeners();
       return false;
@@ -295,8 +303,10 @@ mixin GitStore on AppStateBase {
 
   @override
   Future<bool> gitPull(int projectId) async {
+    final gen = _serverSeq;
     try {
       await api.gitPull(projectId);
+      if (gen != _serverSeq) return false;
       _globalError = '';
       invalidateGitHistory();
       await loadGitRepoInfo(projectId, force: true);
@@ -305,6 +315,7 @@ mixin GitStore on AppStateBase {
       unawaited(refreshLinkedMergeRequest());
       return true;
     } catch (e) {
+      if (gen != _serverSeq) return false;
       _globalError = '$e';
       notifyListeners();
       return false;
@@ -313,8 +324,10 @@ mixin GitStore on AppStateBase {
 
   @override
   Future<bool> gitPullBranch(int projectId, String name) async {
+    final gen = _serverSeq;
     try {
       await api.gitPullBranch(projectId, name);
+      if (gen != _serverSeq) return false;
       _globalError = '';
       // Pulling the current branch moves HEAD.
       invalidateGitHistory();
@@ -324,6 +337,7 @@ mixin GitStore on AppStateBase {
       unawaited(refreshLinkedMergeRequest());
       return true;
     } catch (e) {
+      if (gen != _serverSeq) return false;
       _globalError = '$e';
       notifyListeners();
       return false;
@@ -332,8 +346,10 @@ mixin GitStore on AppStateBase {
 
   @override
   Future<bool> gitPush(int projectId) async {
+    final gen = _serverSeq;
     try {
       await api.gitPush(projectId);
+      if (gen != _serverSeq) return false;
       _globalError = '';
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
@@ -341,6 +357,7 @@ mixin GitStore on AppStateBase {
       unawaited(refreshLinkedMergeRequest());
       return true;
     } catch (e) {
+      if (gen != _serverSeq) return false;
       _globalError = '$e';
       notifyListeners();
       return false;
@@ -354,6 +371,7 @@ mixin GitStore on AppStateBase {
     String base, {
     bool newBranch = false,
   }) async {
+    final gen = _serverSeq;
     try {
       final worktree = await api.gitCreateWorktree(
         projectId,
@@ -361,12 +379,14 @@ mixin GitStore on AppStateBase {
         base,
         newBranch: newBranch,
       );
+      if (gen != _serverSeq) return null;
       _globalError = '';
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
       return worktree;
     } catch (e) {
+      if (gen != _serverSeq) return null;
       _globalError = '$e';
       notifyListeners();
       return null;
@@ -375,13 +395,16 @@ mixin GitStore on AppStateBase {
 
   @override
   Future<void> gitDeleteWorktree(int projectId, String worktreePath) async {
+    final gen = _serverSeq;
     try {
       await api.gitDeleteWorktree(projectId, worktreePath);
+      if (gen != _serverSeq) return;
       _globalError = '';
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -403,11 +426,13 @@ mixin GitStore on AppStateBase {
 
   @override
   Future<void> deleteWorktree(int projectId, String worktreePath) async {
+    final gen = _serverSeq;
     final dependents = await threadsUsingWorktree(projectId, worktreePath);
-    if (dependents == null) return;
+    if (gen != _serverSeq || dependents == null) return;
     for (final thread in dependents) {
       // The backend stops a running session and waits for it before the
       // thread row is gone, so this also kills an in-flight run.
+      if (gen != _serverSeq) return;
       if (!await deleteThread(thread.id)) return;
     }
     // Deleting a thread may already have removed a managed worktree; only
@@ -417,10 +442,12 @@ mixin GitStore on AppStateBase {
     final List<GitWorktree> current;
     try {
       current = await api.gitWorktrees(projectId, force: true);
+      if (gen != _serverSeq) return;
       _gitWorktrees[projectId] = current;
       _gitBranches[projectId] = await api.gitBranches(projectId, force: true);
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
       return;
@@ -478,12 +505,14 @@ mixin GitStore on AppStateBase {
     String? branch,
     String? worktreePath,
   }) async {
+    final gen = _serverSeq;
     try {
       await api.updateThreadGit(
         threadId,
         branch: branch,
         worktreePath: worktreePath,
       );
+      if (gen != _serverSeq) return;
       _globalError = '';
       await refreshThreadsAndGroups();
       if (_activeStore?.threadId == threadId) {
@@ -491,6 +520,7 @@ mixin GitStore on AppStateBase {
         unawaited(refreshLinkedMergeRequest());
       }
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -498,14 +528,17 @@ mixin GitStore on AppStateBase {
 
   @override
   Future<void> setThreadEnvMode(String threadId, String envMode) async {
+    final gen = _serverSeq;
     try {
       await api.updateThreadSettings(threadId, envMode: envMode);
+      if (gen != _serverSeq) return;
       _globalError = '';
       await refreshThreadsAndGroups();
       if (_activeStore?.threadId == threadId) {
         await _activeStore?.reloadDetail();
       }
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -513,8 +546,10 @@ mixin GitStore on AppStateBase {
 
   @override
   Future<void> setThreadLinkedMr(String threadId, String? url) async {
+    final gen = _serverSeq;
     try {
       await api.setThreadLinkedMr(threadId, url);
+      if (gen != _serverSeq) return;
       _globalError = '';
       await refreshThreadsAndGroups();
       if (_activeStore?.threadId == threadId) {
@@ -522,6 +557,7 @@ mixin GitStore on AppStateBase {
         await refreshLinkedMergeRequest();
       }
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -619,14 +655,20 @@ mixin GitStore on AppStateBase {
   Future<void> loadCloneRoot() async {
     _loadingCloneRoot = true;
     notifyListeners();
+    final gen = _serverSeq;
     try {
-      _cloneRoot = await api.getCloneRoot();
+      final root = await api.getCloneRoot();
+      if (gen != _serverSeq) return;
+      _cloneRoot = root;
       _globalError = '';
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
     } finally {
-      _loadingCloneRoot = false;
-      notifyListeners();
+      if (gen == _serverSeq) {
+        _loadingCloneRoot = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -634,14 +676,20 @@ mixin GitStore on AppStateBase {
   Future<void> setCloneRoot(String? path) async {
     _loadingCloneRoot = true;
     notifyListeners();
+    final gen = _serverSeq;
     try {
-      _cloneRoot = await api.setCloneRoot(path?.trim());
+      final root = await api.setCloneRoot(path?.trim());
+      if (gen != _serverSeq) return;
+      _cloneRoot = root;
       _globalError = '';
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
     } finally {
-      _loadingCloneRoot = false;
-      notifyListeners();
+      if (gen == _serverSeq) {
+        _loadingCloneRoot = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -649,14 +697,20 @@ mixin GitStore on AppStateBase {
   Future<void> loadWorktreeRoot() async {
     _loadingWorktreeRoot = true;
     notifyListeners();
+    final gen = _serverSeq;
     try {
-      _worktreeRoot = await api.getWorktreeRoot();
+      final root = await api.getWorktreeRoot();
+      if (gen != _serverSeq) return;
+      _worktreeRoot = root;
       _globalError = '';
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
     } finally {
-      _loadingWorktreeRoot = false;
-      notifyListeners();
+      if (gen == _serverSeq) {
+        _loadingWorktreeRoot = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -664,14 +718,20 @@ mixin GitStore on AppStateBase {
   Future<void> setWorktreeRoot(String? path) async {
     _loadingWorktreeRoot = true;
     notifyListeners();
+    final gen = _serverSeq;
     try {
-      _worktreeRoot = await api.setWorktreeRoot(path?.trim());
+      final root = await api.setWorktreeRoot(path?.trim());
+      if (gen != _serverSeq) return;
+      _worktreeRoot = root;
       _globalError = '';
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
     } finally {
-      _loadingWorktreeRoot = false;
-      notifyListeners();
+      if (gen == _serverSeq) {
+        _loadingWorktreeRoot = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -679,22 +739,30 @@ mixin GitStore on AppStateBase {
   Future<void> loadGitConnections() async {
     _loadingGitConnections = true;
     notifyListeners();
+    final gen = _serverSeq;
     try {
-      _gitConnections = await api.listGitConnections();
+      final connections = await api.listGitConnections();
+      if (gen != _serverSeq) return;
+      _gitConnections = connections;
       _bumpGitConnections();
       _globalError = '';
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
     } finally {
-      _loadingGitConnections = false;
-      notifyListeners();
+      if (gen == _serverSeq) {
+        _loadingGitConnections = false;
+        notifyListeners();
+      }
     }
   }
 
   @override
   Future<void> connectGitLab({String? hostname}) async {
+    final gen = _serverSeq;
     try {
       final updated = await api.connectGitLab(hostname: hostname);
+      if (gen != _serverSeq) return;
       final index = _gitConnections.indexWhere((c) => c.id == updated.id);
       if (index >= 0) {
         _gitConnections[index] = updated;
@@ -705,6 +773,7 @@ mixin GitStore on AppStateBase {
       _globalError = '';
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -712,10 +781,13 @@ mixin GitStore on AppStateBase {
 
   @override
   Future<void> disconnectGitLab({String? hostname}) async {
+    final gen = _serverSeq;
     try {
       await api.disconnectGitLab(hostname: hostname);
+      if (gen != _serverSeq) return;
       await loadGitConnections();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -723,8 +795,10 @@ mixin GitStore on AppStateBase {
 
   @override
   Future<void> connectGitHub({String? hostname}) async {
+    final gen = _serverSeq;
     try {
       final updated = await api.connectGitHub(hostname: hostname);
+      if (gen != _serverSeq) return;
       final index = _gitConnections.indexWhere((c) => c.id == updated.id);
       if (index >= 0) {
         _gitConnections[index] = updated;
@@ -735,6 +809,7 @@ mixin GitStore on AppStateBase {
       _globalError = '';
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -742,10 +817,13 @@ mixin GitStore on AppStateBase {
 
   @override
   Future<void> disconnectGitHub({String? hostname}) async {
+    final gen = _serverSeq;
     try {
       await api.disconnectGitHub(hostname: hostname);
+      if (gen != _serverSeq) return;
       await loadGitConnections();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
