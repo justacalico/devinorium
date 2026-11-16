@@ -95,12 +95,15 @@ impl super::Db {
                 None => anyhow::bail!("group not found"),
             }
         }
-        sqlx::query("UPDATE threads SET thread_group_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
+        let res = sqlx::query("UPDATE threads SET thread_group_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
             .bind(group_id)
             .bind(thread_id)
             .bind(user_id)
             .execute(self.pool())
             .await?;
+        if res.rows_affected() == 0 {
+            anyhow::bail!("thread not found");
+        }
         Ok(())
     }
 
