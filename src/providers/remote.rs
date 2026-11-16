@@ -221,6 +221,13 @@ impl RemoteProvider {
                 };
                 if let Err(e) = self.client.callback(&request_id, &outcome).await {
                     tracing::warn!(error = %e, "failed to deliver permission answer to node");
+                    // The node is parked waiting on this answer; without it
+                    // the run hangs until its callback TTL, so abort now.
+                    let _ = self
+                        .client
+                        .cancel_run(request_id.split('/').next().unwrap_or(&request_id))
+                        .await;
+                    anyhow::bail!("node unreachable while answering permission prompt: {e}");
                 }
                 Ok(EventEffect::Continue)
             }
@@ -239,6 +246,11 @@ impl RemoteProvider {
                 };
                 if let Err(e) = self.client.callback(&request_id, &outcome).await {
                     tracing::warn!(error = %e, "failed to deliver ask answer to node");
+                    let _ = self
+                        .client
+                        .cancel_run(request_id.split('/').next().unwrap_or(&request_id))
+                        .await;
+                    anyhow::bail!("node unreachable while answering ask prompt: {e}");
                 }
                 Ok(EventEffect::Continue)
             }
@@ -275,11 +287,7 @@ fn take_sse_event(buf: &mut Vec<u8>) -> Option<NodeEvent> {
             .position(|w| w == b"\n\n")
             .map(|p| p + 2)
             .into_iter()
-            .chain(
-                buf.windows(4)
-                    .position(|w| w == b"\r\n\r\n")
-                    .map(|p| p + 4),
-            )
+            .chain(buf.windows(4).position(|w| w == b"\r\n\r\n").map(|p| p + 4))
             .min()?;
         let raw: Vec<u8> = buf.drain(..end).collect();
         for line in raw.split(|b| *b == b'\n') {
