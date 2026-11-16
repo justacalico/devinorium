@@ -2,6 +2,22 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.115.7 - 2026-11-16
+#### Bug Fixes
+- 布尔环境变量解析统一为 truthy - (8969271) - HttpAnimations
+- 插件开关写入串行化 - (b478d60) - HttpAnimations
+- 跳过符号链接的技能根目录 - (d52f836) - HttpAnimations
+- 更新重启前排空运行与终端会话 - (de059d8) - HttpAnimations
+- 浏览器动作后复查导航目标 - (f70d85b) - HttpAnimations
+- 全局语言回退跟随支持列表并移除死代码 - (95a4d5c) - HttpAnimations
+- 隐藏仍在流式输出的计划标记块 - (9ed4e21) - HttpAnimations
+- 日志格式化剥离截断与私有参数转义序列 - (52e5ba9) - HttpAnimations
+- 链接打开失败时回退到 xdg-open - (b869aaa) - HttpAnimations
+- 补全 needs answer 标签本地化并修正缩略图比例 - (4882df5) - HttpAnimations
+- GitLab MR 链接解析兼容项目名含 merge_requests - (c8337b8) - HttpAnimations
+
+- - -
+
 ## v0.115.6 - 2026-11-16
 #### Bug Fixes
 - 修复版本检查与服务重载等生命周期资源泄漏 - (a05c2c8) - HttpAnimations
