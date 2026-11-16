@@ -979,6 +979,19 @@ mod tests {
         AcpProvider::new(AgentKind::Devin, "devin".into(), "swe-1-7".into())
     }
 
+    /// Write an executable script via a temp name and rename, so the inode
+    /// under `path` never has an open writer when the next exec hits it
+    /// (ETXTBSY on filesystems with delayed write commit, e.g. btrfs).
+    #[cfg(unix)]
+    fn write_script(path: &Path, body: String) {
+        use std::io::Write;
+        let tmp = path.with_extension("tmp");
+        let mut file = fs::File::create(&tmp).unwrap();
+        file.write_all(body.as_bytes()).unwrap();
+        drop(file);
+        fs::rename(&tmp, path).unwrap();
+    }
+
     /// A minimal ACP agent on stdin/stdout: answers `initialize`,
     /// `session/new` (advertising `model` and `reasoning_effort` select
     /// options), records every `session/set_config_option` request line to
@@ -988,7 +1001,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let script = dir.path().join("fake-agent");
         let log = dir.path().join("requests.log");
-        fs::write(
+        write_script(
             &script,
             format!(
                 "#!/bin/sh\n\
@@ -1009,8 +1022,7 @@ mod tests {
                  done\n",
                 log.display()
             ),
-        )
-        .unwrap();
+        );
         fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
         (dir, script.to_string_lossy().to_string(), log)
     }
@@ -1131,7 +1143,7 @@ mod tests {
         } else {
             ""
         };
-        fs::write(
+        write_script(
             &script,
             format!(
                 "#!/bin/sh\n\
@@ -1154,8 +1166,7 @@ mod tests {
                 argv.display(),
                 log.display(),
             ),
-        )
-        .unwrap();
+        );
         fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
         (dir, script.to_string_lossy().to_string(), log, argv)
     }
@@ -1266,7 +1277,7 @@ mod tests {
         } else {
             r#""error":{"code":-32602,"message":"unknown session"}"#
         };
-        fs::write(
+        write_script(
             &script,
             format!(
                 "#!/bin/sh\n\
@@ -1289,8 +1300,7 @@ mod tests {
                  done\n",
                 log.display(),
             ),
-        )
-        .unwrap();
+        );
         fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
         (dir, script.to_string_lossy().to_string(), log)
     }
