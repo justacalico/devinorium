@@ -47,6 +47,7 @@ class _StreamableApiService extends ApiService {
   Future<List<Thread>> Function()? listThreadsBuilder;
   String? stoppedThread;
   String? lastClientMessageId;
+  final messagesRequests = <String>[];
   Future<MergeRequestLink?> Function(int, int)? findMergeRequestByIidBuilder;
 
   _StreamableApiService(ApiClient client) : super(client: client);
@@ -102,6 +103,7 @@ class _StreamableApiService extends ApiService {
     int limit = 50,
   }) {
     getThreadMessagesCalls++;
+    messagesRequests.add(id);
     return messagesResponse ??
         super.getThreadMessages(
           id,
@@ -3126,6 +3128,146 @@ void main() {
       expect(state.sending, isFalse);
       await state.sendMessage();
     });
+
+    test(
+      'stopThread during pending send stops the run when the message landed',
+      () async {
+        final client = _clientFor([_json(200, {})]);
+        final api = _StreamableApiService(client);
+        final controller = StreamController<SseEvent>();
+        api.streamBuilder = () => controller.stream;
+        final state = AppState.test(
+          api: api,
+          activeProjectId: 1,
+          activeThreadId: 'a',
+          activeThreadDetail: ThreadDetail(
+            thread: Thread(
+              id: 'a',
+              title: 't',
+              projectId: 1,
+              model: '',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: [],
+          ),
+        );
+        addTearDown(() async {
+          state.dispose();
+          await controller.close();
+        });
+        state.setComposerText('hello');
+
+        unawaited(state.sendMessage());
+        expect(state.sendPending, isTrue);
+        while (api.lastClientMessageId == null) {
+          await pumpEventQueue();
+        }
+
+        api.messagesResponse = Future.value(
+          MessagePage(
+            messages: [
+              Message(
+                id: 7,
+                role: 'user',
+                content: 'hello',
+                clientMessageId: api.lastClientMessageId,
+              ),
+            ],
+            total: 1,
+          ),
+        );
+
+        await state.stopThread();
+
+        expect(api.stoppedThread, 'a');
+        expect(state.sendPending, isFalse);
+        expect(state.composerText, isEmpty);
+        expect(state.activeThreadDetail!.messages.single.id, 7);
+      },
+    );
+
+    test(
+      'openThread during a pending send reconciles instead of restoring',
+      () async {
+        final client = ApiClient.withClient(
+          MockClient((req) async {
+            if (req.url.path == '/api/threads/b') {
+              return _json(200, {
+                'thread': {
+                  'id': 'b',
+                  'title': 't',
+                  'project_id': 1,
+                  'model': 'glm-5-2',
+                  'permission_mode': 'normal',
+                  'created_at': '',
+                  'updated_at': '',
+                },
+                'messages': [],
+              });
+            }
+            return _json(200, <String, dynamic>{});
+          }),
+        );
+        final api = _StreamableApiService(client);
+        final controller = StreamController<SseEvent>();
+        api.streamBuilder = () => controller.stream;
+        final state = AppState.test(
+          api: api,
+          activeProjectId: 1,
+          activeThreadId: 'a',
+          activeThreadDetail: ThreadDetail(
+            thread: Thread(
+              id: 'a',
+              title: 't',
+              projectId: 1,
+              model: '',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: [],
+          ),
+          projects: [
+            Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+          ],
+        );
+        addTearDown(() async {
+          state.dispose();
+          await controller.close();
+        });
+        state.setComposerText('hello');
+
+        unawaited(state.sendMessage());
+        expect(state.sendPending, isTrue);
+        while (api.lastClientMessageId == null) {
+          await pumpEventQueue();
+        }
+
+        api.messagesResponse = Future.value(
+          MessagePage(
+            messages: [
+              Message(
+                id: 9,
+                role: 'user',
+                content: 'hello',
+                clientMessageId: api.lastClientMessageId,
+              ),
+            ],
+            total: 1,
+          ),
+        );
+
+        await state.openThread('b');
+        await pumpEventQueue();
+
+        expect(state.activeThreadId, 'b');
+        // The aborted send on 'a' refetches its tail to learn whether the
+        // message persisted; a blind draft restore would make no request.
+        expect(api.messagesRequests, contains('a'));
+      },
+    );
 
     test('stopThread calls the stop endpoint', () async {
       final client = _clientFor([

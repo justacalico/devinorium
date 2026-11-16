@@ -908,6 +908,7 @@ class _RenameDialogState extends State<_RenameDialog> {
   }
 
   Future<void> _submit(AppState state) async {
+    if (_submitting) return;
     final value = _controller.text.trim();
     if (value.isEmpty || value == state.renameInitialName) return;
 

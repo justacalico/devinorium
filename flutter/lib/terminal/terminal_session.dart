@@ -150,19 +150,43 @@ class RemoteTerminalSession extends TerminalSession {
       _TerminalTextSink(terminal.write),
     );
     try {
-      _channel = _connector(uri, token: token);
-      _sub = _channel!.stream.listen(
-        _onMessage,
-        onError: _onError,
-        onDone: _onDone,
+      final channel = _connector(uri, token: token);
+      _channel = channel;
+      // Every callback is identity-guarded: a replaced channel's late
+      // events must not tear down the channel that succeeded it, and a
+      // failure reported on both stream and ready counts only once.
+      bool live() => identical(_channel, channel);
+      _sub = channel.stream.listen(
+        (m) {
+          if (live()) _onMessage(m);
+        },
+        onError: (Object e) {
+          if (live()) _onError(e);
+        },
+        onDone: () {
+          if (live()) _onDone();
+        },
       );
-      _setStatus(TerminalStatus.connected);
-      _stabilityTimer?.cancel();
-      _stabilityTimer = Timer(_stableWindow, () {
-        if (_status == TerminalStatus.connected) _reconnectAttempts = 0;
-      });
-      _sendResize(terminal.viewWidth, terminal.viewHeight);
-      _flushInputBuffer();
+      // The handshake is asynchronous: only flip to connected and flush
+      // the buffered input once the socket is actually ready.
+      unawaited(
+        channel.ready.then(
+          (_) {
+            if (_disposed || !live()) return;
+            _setStatus(TerminalStatus.connected);
+            _stabilityTimer?.cancel();
+            _stabilityTimer = Timer(_stableWindow, () {
+              if (_status == TerminalStatus.connected) _reconnectAttempts = 0;
+            });
+            _sendResize(terminal.viewWidth, terminal.viewHeight);
+            _flushInputBuffer();
+          },
+          onError: (Object e) {
+            if (_disposed || !live()) return;
+            _onError(e);
+          },
+        ),
+      );
     } catch (e) {
       terminal.write('${appL10n.terminalConnectionError('$e')}\r\n');
       _onError(e);
@@ -193,6 +217,7 @@ class RemoteTerminalSession extends TerminalSession {
     if (_disposed) return;
     _setStatus(TerminalStatus.disconnected);
     _sub?.cancel();
+    unawaited(_channel?.sink.close());
     _channel = null;
     _utf8Sink?.close();
     _utf8Sink = null;
@@ -254,7 +279,12 @@ class RemoteTerminalSession extends TerminalSession {
   void _send(String data) {
     if (_disposed) return;
     if (_channel != null && _status == TerminalStatus.connected) {
-      _channel!.sink.add(data);
+      try {
+        _channel!.sink.add(data);
+      } catch (e) {
+        // A channel closing mid-send throws; treat it as a socket drop.
+        _onError(e);
+      }
     }
   }
 

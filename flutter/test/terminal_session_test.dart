@@ -29,8 +29,12 @@ class _FakeWebSocketSink extends DelegatingStreamSink<dynamic>
 
 class _FakeWebSocketChannel extends StreamChannelMixin<dynamic>
     implements WebSocketChannel {
-  _FakeWebSocketChannel() {
-    _ready.complete();
+  _FakeWebSocketChannel({bool failReady = false}) {
+    if (failReady) {
+      _ready.completeError(StateError('handshake failed'));
+    } else {
+      _ready.complete();
+    }
   }
 
   final _controller = StreamChannelController<dynamic>(
@@ -128,7 +132,8 @@ class _FakeBaseClient extends BaseApiClient {
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
     List<int> machineIds = const [],
-  }) => throw UnimplementedError();
+  }) =>
+      throw UnimplementedError();
 
   @override
   Future<void> setServerUrl(String serverUrl) async => _serverUrl = serverUrl;
@@ -205,7 +210,7 @@ void main() {
       expect(session.terminal.buffer.getText(), isNot(contains('�')));
     });
 
-    test('sends JSON resize and input frames', () {
+    test('sends JSON resize and input frames', () async {
       final fake = _FakeWebSocketChannel();
       final outgoing = <dynamic>[];
       fake.remoteStream.listen(outgoing.add);
@@ -218,6 +223,7 @@ void main() {
       addTearDown(session.dispose);
 
       session.terminal.onOutput!('ls -la');
+      await Future<void>.delayed(Duration.zero);
 
       expect(outgoing.length, greaterThanOrEqualTo(2));
       expect(jsonDecode(outgoing[0] as String), {
@@ -352,6 +358,22 @@ void main() {
       expect((inputs.single['data'] as String).length, lessThanOrEqualTo(4096));
 
       await tester.pump(const Duration(seconds: 10));
+    });
+
+    test('handshake failure exits the session without reconnect', () async {
+      final fake = _FakeWebSocketChannel(failReady: true);
+      final session = RemoteTerminalSession(
+        id: 'r4f',
+        uri: Uri.parse('ws://localhost/ws'),
+        reconnect: false,
+        connector: _returnFake(fake),
+      );
+      addTearDown(session.dispose);
+
+      await pumpEventQueue();
+
+      expect(session.status, TerminalStatus.exited);
+      expect(session.completed, completes);
     });
 
     test('exited message completes the session', () {

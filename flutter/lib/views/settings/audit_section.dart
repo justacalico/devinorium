@@ -59,7 +59,10 @@ class _AuditSectionState extends State<_AuditSection> {
       );
       if (!mounted) return;
       setState(() {
-        _entries.addAll(page);
+        // New audit rows prepend between page loads and shift the offset;
+        // drop anything already shown so an entry cannot appear twice.
+        final shown = _entries.map((e) => e.id).toSet();
+        _entries.addAll(page.where((e) => !shown.contains(e.id)));
         _hasMore = page.length == _pageSize;
         _loadingMore = false;
         _error = null;
