@@ -11,6 +11,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart'
 import 'package:markdown/markdown.dart' as markdown;
 import 'package:provider/provider.dart';
 
+import '../browser/browser_panel.dart';
 import '../l10n/l10n.dart';
 import '../models/composer_mode.dart';
 import '../models/models.dart';
@@ -155,6 +156,11 @@ class ThreadPage extends StatelessWidget {
                   onPressed: state.togglePlanOverlay,
                 ),
               IconButton(
+                tooltip: l10n(context).browser,
+                icon: const Icon(Icons.public),
+                onPressed: state.browserPanelStore.toggleOpen,
+              ),
+              IconButton(
                 tooltip: l10n(context).terminal,
                 icon: const Icon(Icons.terminal),
                 onPressed: state.terminalStore.toggleOpen,
@@ -164,7 +170,12 @@ class ThreadPage extends StatelessWidget {
             backgroundColor: theme.colorScheme.surface,
             scrolledUnderElevation: 0,
           ),
-          body: const ChatView(),
+          body: Column(
+            children: [
+              const Expanded(child: ChatView()),
+              BrowserPanel(store: state.browserPanelStore),
+            ],
+          ),
         );
       },
     );

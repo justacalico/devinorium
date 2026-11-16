@@ -1867,5 +1867,21 @@
       "name": {},
       "node": {}
     }
+  },
+  "browser": "浏览器",
+  "@browser": {
+    "description": "Title of the agent browser panel"
+  },
+  "browserEmpty": "代理使用浏览器时，画面会显示在这里。",
+  "@browserEmpty": {
+    "description": "Empty state in the browser panel when no browser session is live"
+  },
+  "browserWebAccessOff": "网页访问已关闭，请在设置中开启后可查看代理浏览器。",
+  "@browserWebAccessOff": {
+    "description": "Empty state in the browser panel when web access is disabled"
+  },
+  "browserHide": "隐藏浏览器",
+  "@browserHide": {
+    "description": "Tooltip for hiding the browser panel"
   }
 }

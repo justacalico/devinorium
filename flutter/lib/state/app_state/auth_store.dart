@@ -353,6 +353,7 @@ mixin AuthStore on AppStateBase {
           _setActiveStore(null);
           // Remote terminal sessions point at the dead process as well.
           await terminalStore.clear();
+          browserPanelStore.clear();
         }
       } else if (!manager.hasBinary &&
           multiServerState
@@ -528,6 +529,7 @@ mixin AuthStore on AppStateBase {
       // the push subscription: the logged-out browser should not keep
       // receiving this account's notifications.
       await terminalStore.clear();
+      browserPanelStore.clear();
       await _teardownPushSubscription();
       try {
         await hubApi.logout();
@@ -584,6 +586,7 @@ mixin AuthStore on AppStateBase {
       // subscription: it must be removed while the old server is still
       // authenticated, or it keeps pushing this account's events.
       await terminalStore.clear();
+      browserPanelStore.clear();
       await _teardownPushSubscription();
       if (hasDirtyEditorTabs) {
         _globalError = appL10n.editorUnsavedSwitch;
@@ -651,6 +654,7 @@ mixin AuthStore on AppStateBase {
           return;
         }
         await terminalStore.clear();
+        browserPanelStore.clear();
         await _teardownPushSubscription();
         if (!discardDirtyTabs && hasDirtyEditorTabs) {
           _globalError = appL10n.editorUnsavedRemoveServer;
@@ -960,6 +964,7 @@ mixin AuthStore on AppStateBase {
     _threadStores.clear();
     _setActiveStore(null);
     await terminalStore.clear();
+    browserPanelStore.clear();
     _gitRepoInfo.clear();
     _gitBranches.clear();
     _gitWorktrees.clear();

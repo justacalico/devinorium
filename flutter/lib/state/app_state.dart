@@ -30,6 +30,7 @@ import '../utils/permission_modes.dart';
 import '../models/models.dart';
 import '../services/notification_service.dart';
 import '../services/version_checker.dart';
+import '../browser/browser_store.dart';
 import '../terminal/terminal_store.dart';
 import 'async_value.dart';
 import 'streaming_state.dart';
@@ -131,6 +132,10 @@ class AppState extends AppStateBase
   final MultiServerState multiServerState;
   @override
   final LocalServerController localServerManager;
+
+  /// Open state for the agent-browser preview panel in the thread view.
+  @override
+  late final BrowserPanelStore browserPanelStore = BrowserPanelStore();
 
   /// Global terminal workspace shared by the agents and editor views.
   @override
@@ -413,6 +418,7 @@ class AppState extends AppStateBase
     _threadStores.clear();
     _activeStore = null;
     terminalStore.dispose();
+    browserPanelStore.dispose();
     multiServerState.removeListener(notifyListeners);
     localServerManager.dispose();
     super.dispose();
