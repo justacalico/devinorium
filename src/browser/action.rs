@@ -4,6 +4,9 @@
 //! into a typed [`Action`] or a user-facing error string (the MCP `isError`
 //! result), so the engine only ever sees valid input.
 
+use std::net::{IpAddr, Ipv4Addr};
+use std::time::Duration;
+
 use serde_json::Value;
 
 /// Hard caps so a runaway agent cannot wedge the browser or balloon a reply.
@@ -184,6 +187,120 @@ pub fn validate_url(raw: &str) -> Result<String, String> {
     Ok(url.to_string())
 }
 
+/// Addresses that can never legitimately host a page the agent should
+/// drive. Loopback and private LAN space stay reachable because pointing
+/// the browser at a local dev server is a core use, but link-local ranges
+/// carry cloud metadata services and multicast/wildcard hosts cannot be
+/// a real site. Literal IPv6 hosts arrive bracket-stripped by `Url`.
+fn nav_blocked_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => blocked_v4(v4),
+        IpAddr::V6(v6) => {
+            if v6.is_loopback() {
+                return false;
+            }
+            if v6.is_unspecified() || v6.is_multicast() {
+                return true;
+            }
+            if (v6.segments()[0] & 0xffc0) == 0xfe80 {
+                return true;
+            }
+            // Mapped and deprecated-compatible forms unwrap to their IPv4.
+            if let Some(v4) = v6.to_ipv4() {
+                return blocked_v4(v4);
+            }
+            if let Some(v4) = embedded_v4(&v6) {
+                return blocked_v4(v4);
+            }
+            false
+        }
+    }
+}
+
+/// Tunnel prefixes carry an IPv4 destination inside the IPv6 address;
+/// judge the embedded address, not the tunnel prefix itself (which may be
+/// a legitimate relay).
+fn embedded_v4(v6: &std::net::Ipv6Addr) -> Option<Ipv4Addr> {
+    let s = v6.segments();
+    let tail = || Ipv4Addr::new((s[6] >> 8) as u8, s[6] as u8, (s[7] >> 8) as u8, s[7] as u8);
+    // NAT64 64:ff9b::/96 and local-use 64:ff9b:1::/48 keep the target in
+    // the last 32 bits; blocking the prefixes would break DNS64 networks.
+    if s[0] == 0x0064 && s[1] == 0xff9b && (s[2] == 0 || s[2] == 1) {
+        return Some(tail());
+    }
+    // 6to4 2002::/16 embeds the relay IPv4 in bits 16..48.
+    if s[0] == 0x2002 {
+        return Some(Ipv4Addr::new(
+            (s[1] >> 8) as u8,
+            s[1] as u8,
+            (s[2] >> 8) as u8,
+            s[2] as u8,
+        ));
+    }
+    // Teredo 2001:0000::/32 obfuscates the client IPv4 by inversion in
+    // the last 32 bits.
+    if s[0] == 0x2001 && s[1] == 0 {
+        let v = u32::from(s[6]) << 16 | u32::from(s[7]);
+        return Some(Ipv4Addr::from(!v));
+    }
+    // ISATAP interface ids are 00|02-00-5E-FE followed by the IPv4.
+    if s[5] == 0x5efe && (s[4] == 0 || s[4] == 0x0200) {
+        return Some(tail());
+    }
+    None
+}
+
+fn blocked_v4(v4: std::net::Ipv4Addr) -> bool {
+    v4.is_unspecified()
+        || v4.is_broadcast()
+        || v4.is_multicast()
+        || v4.is_link_local()
+        || v4.octets()[0] == 0
+}
+
+/// Resolve the destination and reject hosts that land on a blocked range.
+/// Hostnames are resolved at call time so a name pointed at a metadata
+/// address fails the same way a literal does; resolution failures are
+/// refused rather than allowed through.
+pub async fn check_nav_target(raw: &str) -> Result<(), String> {
+    let url = reqwest::Url::parse(raw).map_err(|_| "invalid url".to_string())?;
+    let host = url.host_str().ok_or_else(|| "invalid url".to_string())?;
+    let host = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return if nav_blocked_ip(ip) {
+            Err("this destination is not allowed".into())
+        } else {
+            Ok(())
+        };
+    }
+    let port = url.port_or_known_default().unwrap_or(443);
+    let lookup = tokio::time::timeout(
+        Duration::from_secs(5),
+        tokio::net::lookup_host((host, port)),
+    )
+    .await;
+    match lookup {
+        Ok(Ok(addrs)) => {
+            let mut saw = false;
+            for addr in addrs {
+                saw = true;
+                if nav_blocked_ip(addr.ip()) {
+                    return Err("this destination is not allowed".into());
+                }
+            }
+            if saw {
+                Ok(())
+            } else {
+                Err("the host did not resolve".into())
+            }
+        }
+        _ => Err("the host did not resolve".into()),
+    }
+}
+
 fn key_arg(args: &Value) -> Result<String, String> {
     let key = str_arg(args, "key")?.trim();
     if key.is_empty() {
@@ -325,6 +442,45 @@ mod tests {
             }
         );
         assert!(parse("browser_navigate", &json!({"url": "http://intranet.local"})).is_ok());
+    }
+
+    #[tokio::test]
+    async fn nav_target_blocks_link_local_and_wildcard() {
+        for url in [
+            "http://169.254.169.254/latest/meta-data",
+            "http://169.254.1.1/",
+            "http://0.0.0.0/",
+            "http://0.1.2.3/",
+            "http://255.255.255.255/",
+            "http://239.0.0.1/",
+            "http://[::]/",
+            "http://[fe80::1]/",
+            "http://[ff02::1]/",
+            "http://[::ffff:169.254.169.254]/",
+            "http://[::169.254.169.254]/",
+            "http://[64:ff9b::a9fe:a9fe]/",
+        ] {
+            assert!(
+                check_nav_target(url).await.is_err(),
+                "{url} should be refused"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn nav_target_allows_dev_destinations() {
+        for url in [
+            "http://127.0.0.1:3000/app",
+            "http://192.168.1.20/",
+            "http://10.0.0.5:8080/",
+            "http://[::1]/",
+            "http://100.64.1.1/",
+        ] {
+            assert!(
+                check_nav_target(url).await.is_ok(),
+                "{url} should be allowed"
+            );
+        }
     }
 
     #[test]

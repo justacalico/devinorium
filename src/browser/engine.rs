@@ -259,8 +259,23 @@ impl ChromiumEngine {
         match action {
             Action::Navigate { url } => {
                 super::action::validate_url(url)?;
+                super::action::check_nav_target(url).await?;
                 match tokio::time::timeout(NAV_TIMEOUT, self.page.goto(url.clone())).await {
                     Ok(Ok(_)) => {
+                        // Redirects run inside Chromium unchecked; verify
+                        // where the page landed before its content is
+                        // snapshotted. This gates what the agent is told,
+                        // not what Chromium already fetched.
+                        match self.page.url().await {
+                            Ok(Some(final_url)) => {
+                                super::action::check_nav_target(&final_url).await?
+                            }
+                            _ => {
+                                return Err(
+                                    "could not verify the final navigation target".to_string()
+                                )
+                            }
+                        }
                         let snap = self.snapshot_json().await?;
                         self.clock.stamp();
                         Ok(text(self.format_snapshot(&snap)))
