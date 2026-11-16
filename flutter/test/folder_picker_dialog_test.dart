@@ -137,6 +137,36 @@ void main() {
     );
   });
 
+  testWidgets('rejects .. segments but allows names containing dots', (
+    tester,
+  ) async {
+    final client = _clientFor([
+      _json(200, []),
+      _json(200, []),
+    ]);
+    await _pumpDialog(tester, client);
+
+    final pathField = find.byWidgetPredicate(
+      (w) => w is TextField && w.decoration?.labelText == 'Path',
+    );
+
+    await tester.enterText(pathField, '../escape');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('Path traversal is not allowed'), findsWidgets);
+
+    await tester.enterText(pathField, '~/..');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('Path traversal is not allowed'), findsWidgets);
+
+    // A name that merely contains '..' is a legal directory name.
+    await tester.enterText(pathField, 'my..dir');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('Path traversal is not allowed'), findsNothing);
+  });
+
   testWidgets('cancelling returns null', (tester) async {
     final client = _clientFor([_json(200, [])]);
     await _pumpDialog(tester, client);
