@@ -1058,6 +1058,7 @@ async fn resend_keeps_machine_refs_and_mints_a_fresh_grant() {
 struct FakeSsh {
     port: u16,
     commands: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    auth_attempts: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 const SSH_HOST_KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----
@@ -1085,6 +1086,7 @@ use russh::server::Server as _;
 #[derive(Clone)]
 struct FakeSshHandler {
     commands: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    auth_attempts: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl russh::server::Server for FakeSshHandler {
@@ -1112,6 +1114,8 @@ impl russh::server::Handler for FakeSshHandler {
         user: &str,
         password: &str,
     ) -> Result<russh::server::Auth, Self::Error> {
+        self.auth_attempts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if user == "agent" && password == "hunter2" {
             Ok(russh::server::Auth::Accept)
         } else {
@@ -1124,6 +1128,8 @@ impl russh::server::Handler for FakeSshHandler {
         _user: &str,
         _key: &russh::keys::ssh_key::PublicKey,
     ) -> Result<russh::server::Auth, Self::Error> {
+        self.auth_attempts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(russh::server::Auth::Accept)
     }
 
@@ -1164,8 +1170,10 @@ impl FakeSsh {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let commands = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let auth_attempts = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let handler = FakeSshHandler {
             commands: commands.clone(),
+            auth_attempts: auth_attempts.clone(),
         };
         let host_key = russh::keys::decode_secret_key(SSH_HOST_KEY, None).expect("test host key");
         let config = std::sync::Arc::new(russh::server::Config {
@@ -1178,7 +1186,11 @@ impl FakeSsh {
             let mut srv = handler;
             let _ = srv.run_on_socket(config, &listener).await;
         });
-        Self { port, commands }
+        Self {
+            port,
+            commands,
+            auth_attempts,
+        }
     }
 }
 
@@ -1270,7 +1282,35 @@ async fn ssh_test_connection_and_exec_end_to_end() {
         .await
         .unwrap();
 
-    // The owner probe runs `hostname` and reports the remote name.
+    // First contact only pins the host key; no credentials are sent.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/machines/{}/test", machine.id),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["ok"], false, "body: {v}");
+    assert!(
+        v["error"]
+            .as_str()
+            .unwrap()
+            .contains("pinned new ssh host key"),
+        "body: {v}"
+    );
+    assert_eq!(
+        ssh.auth_attempts.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "the pinning probe must never reach authentication"
+    );
+
+    // With a pin stored, the owner probe runs `hostname` and reports the
+    // remote name.
     let resp = app
         .clone()
         .oneshot(authed(
@@ -1377,6 +1417,7 @@ async fn ssh_test_connection_and_exec_end_to_end() {
     assert_eq!(resp.status(), StatusCode::GATEWAY_TIMEOUT);
 
     // Wrong credentials surface as a failed probe, never leaking them.
+    // First probe only pins; the second reaches authentication and fails.
     let bad = db
         .create_machine(
             "bad",
@@ -1389,19 +1430,21 @@ async fn ssh_test_connection_and_exec_end_to_end() {
         )
         .await
         .unwrap();
-    let resp = app
-        .clone()
-        .oneshot(authed(
-            "POST",
-            &format!("/api/machines/{}/test", bad.id),
-            &cookie,
-            "",
-        ))
-        .await
-        .unwrap();
-    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
-    assert_eq!(v["ok"], false);
-    assert!(!v["error"].as_str().unwrap().contains("wrongpass"));
+    for _ in 0..2 {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "POST",
+                &format!("/api/machines/{}/test", bad.id),
+                &cookie,
+                "",
+            ))
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+        assert_eq!(v["ok"], false);
+        assert!(!v["error"].as_str().unwrap().contains("wrongpass"));
+    }
 }
 
 #[tokio::test]
@@ -1424,7 +1467,30 @@ async fn ssh_key_auth_and_host_key_pinning() {
         .await
         .unwrap();
 
-    // The first probe learns the host key and pins it.
+    // The first probe learns and pins the host key without authenticating.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/machines/{}/test", machine.id),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["ok"], false, "body: {v}");
+    assert!(
+        v["error"]
+            .as_str()
+            .unwrap()
+            .contains("pinned new ssh host key"),
+        "body: {v}"
+    );
+    let pinned = db.get_machine(machine.id).await.unwrap().unwrap();
+    assert!(pinned.ssh_fingerprint.starts_with("SHA256:"), "{pinned:?}");
+
+    // With the pin stored, the next probe authenticates normally.
     let resp = app
         .clone()
         .oneshot(authed(
@@ -1437,8 +1503,6 @@ async fn ssh_key_auth_and_host_key_pinning() {
         .unwrap();
     let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     assert_eq!(v["ok"], true, "body: {v}");
-    let pinned = db.get_machine(machine.id).await.unwrap().unwrap();
-    assert!(pinned.ssh_fingerprint.starts_with("SHA256:"), "{pinned:?}");
 
     // Publickey auth against the same key still works through exec.
     let token = grants.create(1, vec![machine.id]).unwrap();
@@ -1478,7 +1542,8 @@ async fn ssh_key_auth_and_host_key_pinning() {
         "error: {v}"
     );
 
-    // Clearing the pin re-learns the key on the next probe.
+    // Clearing the pin re-learns the key on the next probe, again without
+    // sending credentials on the first contact.
     let resp = app
         .clone()
         .oneshot(authed(
@@ -1490,18 +1555,20 @@ async fn ssh_key_auth_and_host_key_pinning() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let resp = app
-        .clone()
-        .oneshot(authed(
-            "POST",
-            &format!("/api/machines/{}/test", machine.id),
-            &cookie,
-            "",
-        ))
-        .await
-        .unwrap();
-    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
-    assert_eq!(v["ok"], true);
+    for expected in [false, true] {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "POST",
+                &format!("/api/machines/{}/test", machine.id),
+                &cookie,
+                "",
+            ))
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+        assert_eq!(v["ok"], expected, "body: {v}");
+    }
 
     // Resaving the same endpoint keeps the pin; a move drops it.
     let pinned = db.get_machine(machine.id).await.unwrap().unwrap();

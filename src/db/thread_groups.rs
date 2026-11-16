@@ -61,24 +61,24 @@ impl super::Db {
         id: i64,
         user_id: i64,
         name: &str,
-    ) -> anyhow::Result<()> {
-        sqlx::query("UPDATE thread_groups SET name = ? WHERE id = ? AND user_id = ?")
+    ) -> anyhow::Result<u64> {
+        let res = sqlx::query("UPDATE thread_groups SET name = ? WHERE id = ? AND user_id = ?")
             .bind(name)
             .bind(id)
             .bind(user_id)
             .execute(self.pool())
             .await?;
-        Ok(())
+        Ok(res.rows_affected())
     }
 
-    pub async fn delete_thread_group(&self, id: i64, user_id: i64) -> anyhow::Result<()> {
+    pub async fn delete_thread_group(&self, id: i64, user_id: i64) -> anyhow::Result<u64> {
         // Threads in this group will have thread_group_id set to NULL via ON DELETE SET NULL.
-        sqlx::query("DELETE FROM thread_groups WHERE id = ? AND user_id = ?")
+        let res = sqlx::query("DELETE FROM thread_groups WHERE id = ? AND user_id = ?")
             .bind(id)
             .bind(user_id)
             .execute(self.pool())
             .await?;
-        Ok(())
+        Ok(res.rows_affected())
     }
 
     /// Move a thread to a group (or ungroup it if group_id is None).

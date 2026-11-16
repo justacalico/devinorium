@@ -45,14 +45,18 @@ use tower_http::{compression::CompressionLayer, limit::RequestBodyLimitLayer, tr
 /// A permission request that is awaiting a user decision.
 pub struct PendingPermissionRequest {
     pub user_id: i64,
-    pub thread_id: String,
+    /// Identifies this entry so stale cleanup cannot remove a newer
+    /// request that reused the same key.
+    pub nonce: u64,
     pub sender: oneshot::Sender<String>,
 }
 
 /// An ask request that is awaiting a user response.
 pub struct PendingAskRequest {
     pub user_id: i64,
-    pub thread_id: String,
+    /// Identifies this entry so stale cleanup cannot remove a newer
+    /// request that reused the same key.
+    pub nonce: u64,
     pub sender: oneshot::Sender<Option<HashMap<String, serde_json::Value>>>,
 }
 
@@ -65,8 +69,11 @@ pub struct AppState {
     /// Startup probe results for each provider's backing CLI, so the API can
     /// report which providers are installed on this host.
     pub provider_status: providers::ProviderStatusCache,
-    pub pending_permission_requests: Arc<Mutex<HashMap<String, PendingPermissionRequest>>>,
-    pub pending_ask_requests: Arc<Mutex<HashMap<String, PendingAskRequest>>>,
+    /// Keyed by (thread_id, request_id): providers choose the request id,
+    /// so collisions across threads must not cancel an in-flight prompt.
+    pub pending_permission_requests:
+        Arc<Mutex<HashMap<(String, String), PendingPermissionRequest>>>,
+    pub pending_ask_requests: Arc<Mutex<HashMap<(String, String), PendingAskRequest>>>,
     pub thread_runner: crate::thread_runner::ThreadRunner,
     pub git: Arc<crate::git::GitService>,
     pub git_remote: Arc<crate::git::GitRemoteService>,

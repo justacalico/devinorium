@@ -102,6 +102,18 @@ impl MachineGrants {
             None => None,
         }
     }
+
+    /// Drop `machine_id` from every grant and discard grants left empty.
+    /// Called when a machine is deleted or re-pointed at another host so a
+    /// minted token cannot follow a reused id to a machine its owner never
+    /// referenced.
+    pub fn revoke_machine(&self, machine_id: i64) {
+        let mut map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        map.retain(|_, g| {
+            g.machine_ids.retain(|id| *id != machine_id);
+            !g.machine_ids.is_empty()
+        });
+    }
 }
 
 /// Replace machine-grant tokens in `text` with a placeholder. Transcript
@@ -187,6 +199,16 @@ mod tests {
             grants.create(1, vec![1]).unwrap();
         }
         assert!(grants.inner.lock().unwrap().len() <= GRANT_TABLE_CAP);
+    }
+
+    #[test]
+    fn revoke_machine_drops_it_from_every_grant() {
+        let grants = MachineGrants::new();
+        let shared = grants.create(1, vec![1, 2]).unwrap();
+        let solo = grants.create(1, vec![2]).unwrap();
+        grants.revoke_machine(2);
+        assert_eq!(grants.lookup(&shared).unwrap().machine_ids, [1]);
+        assert!(grants.lookup(&solo).is_none());
     }
 
     #[test]
