@@ -129,7 +129,13 @@ async fn apply(State(state): State<AppState>, CurrentUser(user): CurrentUser) ->
                     None,
                 )
                 .await;
-            update::schedule_restart(applied.exe, applied.staged);
+            update::schedule_restart(applied.exe, applied.staged, async move {
+                state
+                    .thread_runner
+                    .stop_all(std::time::Duration::from_secs(12))
+                    .await;
+                state.terminal_manager.kill_all().await;
+            });
             Json(ApplyResponse {
                 status: "restarting",
                 version: applied.version,

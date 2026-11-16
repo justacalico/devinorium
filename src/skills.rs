@@ -159,6 +159,12 @@ pub async fn discover_skills(cwd: &Path, home: &Path) -> Vec<Skill> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     for (dir, source) in skill_dirs(cwd, home) {
+        // A symlinked root would scan outside the expected locations;
+        // entries inside get their own symlink checks below.
+        match tokio::fs::symlink_metadata(&dir).await {
+            Ok(m) if m.is_dir() && !m.file_type().is_symlink() => {}
+            _ => continue,
+        }
         let mut entries = match tokio::fs::read_dir(&dir).await {
             Ok(e) => e,
             Err(_) => continue,
@@ -395,6 +401,23 @@ mod tests {
         std::os::unix::fs::symlink(&linkdir, cwd.join(".devin/skills/dirlink")).unwrap();
         let skills = discover_skills(cwd, cwd).await;
         assert!(skills.is_empty());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn discover_skips_symlinked_skills_root() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path();
+        let outside = root.path().join("outside");
+        std::fs::create_dir_all(outside.join("sneaky")).unwrap();
+        std::fs::write(
+            outside.join("sneaky/SKILL.md"),
+            "---\nname: sneaky\n---\nx\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(cwd.join(".devin")).unwrap();
+        std::os::unix::fs::symlink(&outside, cwd.join(".devin/skills")).unwrap();
+        assert!(discover_skills(cwd, cwd).await.is_empty());
     }
 
     #[tokio::test]
