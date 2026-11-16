@@ -84,6 +84,7 @@ class LocalServerManager implements LocalServerController {
   DateTime? _quickExitCooldownUntil;
   Future<LocalServerEndpoint?>? _starting;
   Future<void>? _stopInFlight;
+  Future<void>? _endpointWrite;
 
   /// Optional override for the data directory (default: per-user app data).
   final String? dataDir;
@@ -271,7 +272,8 @@ class LocalServerManager implements LocalServerController {
       baseUrl: 'http://127.0.0.1:$port',
       token: token,
     );
-    unawaited(_writeEndpointFile(_endpoint!));
+    _endpointWrite = _writeEndpointFile(_endpoint!);
+    unawaited(_endpointWrite);
     return _endpoint;
   }
 
@@ -305,6 +307,15 @@ class LocalServerManager implements LocalServerController {
     _process = null;
     _endpoint = null;
     _exited = true;
+    // A publish fired at spawn time may still be writing; wait it out so
+    // the endpoint file cannot reappear after it is removed.
+    final write = _endpointWrite;
+    _endpointWrite = null;
+    if (write != null) {
+      try {
+        await write;
+      } catch (_) {}
+    }
     if (proc == null) return;
     proc.kill();
     try {
