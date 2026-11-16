@@ -268,9 +268,22 @@ const MAX_SSE_BUFFER_BYTES: usize = 64 * 1024 * 1024;
 /// `done` would swallow the result.
 fn take_sse_event(buf: &mut Vec<u8>) -> Option<NodeEvent> {
     loop {
-        let end = buf.windows(2).position(|w| w == b"\n\n")?;
-        let raw: Vec<u8> = buf.drain(..end + 2).collect();
+        // Event blocks end at a bare LF pair; a proxy that rewrites the
+        // stream to CRLF must still terminate events, so check both.
+        let end = buf
+            .windows(2)
+            .position(|w| w == b"\n\n")
+            .map(|p| p + 2)
+            .into_iter()
+            .chain(
+                buf.windows(4)
+                    .position(|w| w == b"\r\n\r\n")
+                    .map(|p| p + 4),
+            )
+            .min()?;
+        let raw: Vec<u8> = buf.drain(..end).collect();
         for line in raw.split(|b| *b == b'\n') {
+            let line = line.strip_suffix(b"\r").unwrap_or(line);
             if let Some(data) = line.strip_prefix(b"data:") {
                 // An unparseable payload is dropped, not treated as the end
                 // of buffered events: one bad event must not wedge the run.
@@ -360,6 +373,19 @@ mod tests {
         );
         let ev = take_sse_event(&mut buf).expect("done event survives the keep-alive");
         assert!(matches!(ev, NodeEvent::Done { .. }));
+    }
+
+    #[test]
+    fn sse_parser_accepts_crlf_terminators() {
+        // A proxy rewriting the stream to CRLF must still terminate events;
+        // otherwise the buffer never drains and the run errors at the cap.
+        let mut buf = Vec::from(
+            "data: {\"kind\":\"done\",\"outcome\":{\"session_id\":\"s\",\"reply\":\"ok\",\"thinking\":\"\",\"parts\":[]}}\r\n\r\n"
+                .as_bytes(),
+        );
+        let ev = take_sse_event(&mut buf).expect("crlf event terminates");
+        assert!(matches!(ev, NodeEvent::Done { .. }));
+        assert!(buf.is_empty());
     }
 
     #[test]
