@@ -105,6 +105,11 @@ fn tool_result(result: Result<Vec<super::ToolContent>, String>) -> Value {
 async fn handle(msg: &Value, slot: &mut EngineSlot, factory: &EngineFactory) -> Option<Value> {
     let id = msg.get("id").cloned().unwrap_or(Value::Null);
     let is_notification = msg.get("id").is_none();
+    // A JSON-RPC response carries an id plus result/error but no method;
+    // answering it would be a response to a response, which the spec forbids.
+    if msg.get("method").is_none() && (msg.get("result").is_some() || msg.get("error").is_some()) {
+        return None;
+    }
     let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
     let params = msg.get("params").cloned().unwrap_or(Value::Null);
 
@@ -438,6 +443,19 @@ mod tests {
         let out = run(&script, factory).await;
         assert_eq!(out[0]["error"]["code"], -32700);
         assert_eq!(out[1]["result"], json!({}));
+    }
+
+    #[tokio::test]
+    async fn client_responses_are_dropped_not_answered() {
+        let (factory, _) = fake_factory(vec![]);
+        let script = concat!(
+            "{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{}}\n",
+            "{\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-1}}\n",
+            "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"ping\"}\n",
+        );
+        let out = run(script, factory).await;
+        assert_eq!(out.len(), 1, "responses must not be answered");
+        assert_eq!(out[0]["result"], json!({}));
     }
 
     #[tokio::test]
