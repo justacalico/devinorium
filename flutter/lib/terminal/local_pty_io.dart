@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:pty2/pty2.dart';
@@ -11,6 +12,8 @@ class LocalPtyBackend {
 
   final Terminal terminal;
   PseudoTerminal? _pty;
+  StreamSubscription<String>? _outSub;
+  bool _disposed = false;
 
   void start({String? workingDirectory}) {
     // pwsh (PowerShell 7) is not installed on a stock Windows system;
@@ -35,13 +38,14 @@ class LocalPtyBackend {
       }
     }
     if (_pty != null) {
-      _pty!.out.listen(
+      _outSub = _pty!.out.listen(
         terminal.write,
         onError: (Object e) =>
             terminal.write('\r\n${appL10n.terminalPtyError('$e')}\r\n'),
         onDone: () => terminal.write('\r\n${appL10n.terminalPtyClosed}\r\n'),
       );
       _pty!.exitCode.then((code) {
+        if (_disposed) return;
         terminal.write('\r\n${appL10n.terminalProcessExited('$code')}\r\n');
       });
     } else {
@@ -56,6 +60,8 @@ class LocalPtyBackend {
   void resize(int cols, int rows) => _pty?.resize(cols, rows);
 
   void dispose() {
+    _disposed = true;
+    unawaited(_outSub?.cancel());
     _pty?.kill();
   }
 }
