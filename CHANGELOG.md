@@ -2,6 +2,43 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.115.6 - 2026-11-16
+#### Bug Fixes
+- 修复版本检查与服务重载等生命周期资源泄漏 - (a05c2c8) - HttpAnimations
+- SSE 流按需建立连接并限制事件缓冲上限 - (713eeb5) - HttpAnimations
+- 强制登出与登录流程释放资源并避免抢占切换锁 - (2c43c7c) - HttpAnimations
+- Web 端不再将会话令牌持久化到本地存储 - (1923206) - HttpAnimations
+- Windows .cmd 编辑器启动经 cmd.exe 传参防注入 - (7699c31) - HttpAnimations
+- 编辑器路径解析改用 posix 以兼容 Windows 客户端 - (3df94b1) - HttpAnimations
+- 修复 wasm 构建下远程终端 WebSocket 回退到 stub - (c174bf5) - HttpAnimations
+- 差异折叠补上首尾省略标记 - (d53fcf2) - HttpAnimations
+- 路径遍历检查按路径段匹配 - (d211336) - HttpAnimations
+- 仓库相对路径改用 posix 拼接 - (24c3214) - HttpAnimations
+- 空选项权限请求按请求去重自动拒绝 - (8d677f6) - HttpAnimations
+- 新建项目与创建用户按返回值反馈结果并监听路径输入 - (f4085d3) - HttpAnimations
+- 根路径输入框按服务器与存储值同步 - (2d7aea1) - HttpAnimations
+- 等待端点文件发布完成再清理 - (69e81a4) - HttpAnimations
+- 修复面板提供者与作业日志对话框生命周期 - (250b4c0) - HttpAnimations
+- 保存并关闭编辑器按目标标签页判断 - (751e67a) - HttpAnimations
+- 修复服务器切换时的异步竞态与脏编辑器保护 - (5d46919) - HttpAnimations
+- 终端子进程失败时回收并报告真实退出码 - (46eea1d) - HttpAnimations
+- 文件作用域阻止硬链接绕过 - (32526fe) - HttpAnimations
+- 浏览器导航拦截受限目标地址 - (64a9086) - HttpAnimations
+- SSH 凭据仅在主机密钥固定后发送 - (5c87e1a) - HttpAnimations
+- 机器删除或改向时吊销其授权令牌 - (a173084) - HttpAnimations
+- 权限和提问请求按线程隔离防止串答 - (9d6113c) - HttpAnimations
+- 线程组缺失操作返回 404 并去除名称空白 - (476790f) - HttpAnimations
+- 目录选择器只创建自有控制器 - (0d64907) - HttpAnimations
+- 重命名对话框防止重复提交 - (62a289d) - HttpAnimations
+- 审计分页合并时按 ID 去重 - (efd7e2f) - HttpAnimations
+- 本地 PTY 释放时取消输出订阅 - (399abf7) - HttpAnimations
+- 终端握手就绪前不标记已连接 - (7db8530) - HttpAnimations
+- 预加载旧请求不覆盖同键新请求 - (53d4921) - HttpAnimations
+- Web 端终端使用绝对 WebSocket 地址 - (d703067) - HttpAnimations
+- 停止或切换线程时核对未完成的发送 - (fcfe5b1) - HttpAnimations
+
+- - -
+
 ## v0.115.5 - 2026-11-16
 #### Bug Fixes
 - 删除线程时保留仍被引用的工作区 - (198f624) - HttpAnimations
