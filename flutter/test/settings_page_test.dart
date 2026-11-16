@@ -1772,6 +1772,52 @@ void main() {
     expect(find.textContaining('path must be absolute'), findsOneWidget);
   });
 
+  testWidgets('Clone root field resets when the active server changes', (
+    tester,
+  ) async {
+    final fake = _FakeApiService()..cloneRootToReturn = '/srv/clones';
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      cloneRoot: '/srv/clones',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
+    final field = find.byType(TextField).first;
+    expect(tester.widget<TextField>(field).controller!.text, '/srv/clones');
+
+    // The new server reports no clone root; the old value must not leak
+    // into the field (or get saved to the new server by accident).
+    state.multiServerState.addTestConnection(
+      ServerProfile(
+        id: 'other',
+        label: 'other',
+        baseUrl: 'http://other',
+        token: 'token',
+        username: 'owner',
+        createdAt: DateTime.now().toUtc(),
+      ),
+      _FakeApiService(),
+    );
+    await state.loadCloneRoot();
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<TextField>(field).controller!.text, isEmpty);
+  });
+
   testWidgets('Directories section shows a save error only once', (
     tester,
   ) async {

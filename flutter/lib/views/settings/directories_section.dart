@@ -110,29 +110,78 @@ class _RootPathCard extends StatefulWidget {
 
 class _RootPathCardState extends State<_RootPathCard> {
   final _controller = TextEditingController();
+  String? _seenServerId;
+  String? _seenValue;
+  bool _seenLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _controller.text = widget.getValue() ?? '';
+    _seenServerId = widget.state.activeServerId;
+    _seenValue = widget.getValue();
+    _seenLoading = widget.getLoading();
+    _controller.text = _seenValue ?? '';
     _controller.addListener(_onTextChanged);
+    widget.state.addListener(_onValueChanged);
   }
 
   void _onTextChanged() {
     setState(() {});
   }
 
+  // A server switch replaces the scoped root, and the new server's value
+  // arrives one or more notifications later. On a switch the stored value
+  // still belongs to the old server, so the field clears until the new
+  // server's root loads in; remembering it keeps a stale notify from
+  // filling the field back with the old path. On the same server,
+  // getValue() only changes via loads and saves, never from typing.
+  void _onValueChanged() {
+    final serverId = widget.state.activeServerId;
+    final value = widget.getValue();
+    final loading = widget.getLoading();
+    if (serverId != _seenServerId) {
+      _seenServerId = serverId;
+      _seenValue = value;
+      _seenLoading = loading;
+      _controller.text = '';
+      setState(() {});
+      return;
+    }
+    if (value == _seenValue) {
+      if (loading != _seenLoading) {
+        _seenLoading = loading;
+        setState(() {});
+      }
+      return;
+    }
+    _seenValue = value;
+    _seenLoading = loading;
+    _controller.text = value ?? '';
+    setState(() {});
+  }
+
   @override
   void didUpdateWidget(covariant _RootPathCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.state != widget.state) {
+      oldWidget.state.removeListener(_onValueChanged);
+      widget.state.addListener(_onValueChanged);
+      _seenServerId = widget.state.activeServerId;
+      _seenValue = widget.getValue();
+      _seenLoading = widget.getLoading();
+      _controller.text = _seenValue ?? '';
+      return;
+    }
     final root = widget.getValue() ?? '';
     if (_controller.text.isEmpty && root.isNotEmpty) {
       _controller.text = root;
+      _seenValue = root;
     }
   }
 
   @override
   void dispose() {
+    widget.state.removeListener(_onValueChanged);
     _controller.removeListener(_onTextChanged);
     _controller.dispose();
     super.dispose();
@@ -141,9 +190,6 @@ class _RootPathCardState extends State<_RootPathCard> {
   Future<void> _save() async {
     final text = _controller.text.trim();
     await widget.onSave(text.isEmpty ? null : text);
-    if (mounted && widget.state.globalError.isEmpty) {
-      _controller.text = widget.getValue() ?? '';
-    }
   }
 
   Future<void> _browse() async {
