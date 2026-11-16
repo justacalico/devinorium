@@ -76,18 +76,16 @@ pub struct ExecOutput {
 
 pub struct SshSession {
     handle: Handle<PinnedHostKey>,
-    /// Fingerprint of the host key this session negotiated with.
-    pub fingerprint: String,
 }
 
 impl SshSession {
-    /// Connect and authenticate. When `expected_fingerprint` is empty the
-    /// presented host key is trusted on first use and echoed back in
-    /// `fingerprint` for the caller to pin; when it is set a different key
-    /// aborts the handshake before credentials are sent. A non-empty
-    /// `key_pem` tries public-key auth first (with `password` as the
-    /// optional key passphrase) and falls back to password auth when the
-    /// key cannot be decoded or is rejected.
+    /// Connect and authenticate. `expected_fingerprint` must carry the
+    /// pinned host key (see [`probe_fingerprint`]); a different key aborts
+    /// the handshake before credentials are sent, and an empty expectation
+    /// is refused so a caller can never leak credentials to an unverified
+    /// host. A non-empty `key_pem` tries public-key auth first (with
+    /// `password` as the optional key passphrase) and falls back to
+    /// password auth when the key cannot be decoded or is rejected.
     pub async fn connect(
         host: &str,
         port: u16,
@@ -96,7 +94,9 @@ impl SshSession {
         key_pem: &str,
         expected_fingerprint: &str,
     ) -> anyhow::Result<Self> {
-        let expected = (!expected_fingerprint.is_empty()).then(|| expected_fingerprint.to_string());
+        if expected_fingerprint.is_empty() {
+            bail!("refusing to authenticate without a pinned ssh host key");
+        }
         let observed = Arc::new(Mutex::new(None::<String>));
         let config = Arc::new(client::Config {
             // No inactivity timeout: callers wrap the whole call in their
@@ -106,7 +106,7 @@ impl SshSession {
             ..Default::default()
         });
         let handler = PinnedHostKey {
-            expected: expected.clone(),
+            expected: Some(expected_fingerprint.to_string()),
             observed: observed.clone(),
         };
         let mut handle = tokio::time::timeout(
@@ -116,7 +116,7 @@ impl SshSession {
         .await
         .with_context(|| format!("connecting to {host}:{port} timed out"))?
         .map_err(|e| {
-            if expected.is_some() && matches!(e, russh::Error::UnknownKey) {
+            if matches!(e, russh::Error::UnknownKey) {
                 let seen = observed
                     .lock()
                     .unwrap_or_else(|p| p.into_inner())
@@ -130,11 +130,6 @@ impl SshSession {
                 anyhow::Error::new(e).context(format!("connecting to {host}:{port}"))
             }
         })?;
-        let fingerprint = observed
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
-            .unwrap_or_default();
 
         let mut authenticated = false;
         if !key_pem.is_empty() {
@@ -180,10 +175,7 @@ impl SshSession {
         if !authenticated {
             bail!("ssh authentication failed for {user}@{host}:{port}");
         }
-        Ok(Self {
-            handle,
-            fingerprint,
-        })
+        Ok(Self { handle })
     }
 
     /// Run `command` on a fresh session channel and collect its output.
@@ -227,6 +219,34 @@ impl SshSession {
             .disconnect(russh::Disconnect::ByApplication, "", "en")
             .await;
     }
+}
+
+/// Run the handshake only and return the presented host key fingerprint.
+/// No credentials are exchanged: callers pin the result and refuse to
+/// authenticate until a pin exists, so a password or key offer never
+/// reaches a host whose identity was just learned.
+pub async fn probe_fingerprint(host: &str, port: u16) -> anyhow::Result<String> {
+    let observed = Arc::new(Mutex::new(None::<String>));
+    let config = Arc::new(client::Config {
+        inactivity_timeout: None,
+        ..Default::default()
+    });
+    let handler = PinnedHostKey {
+        expected: None,
+        observed: observed.clone(),
+    };
+    let handle = tokio::time::timeout(
+        CONNECT_TIMEOUT,
+        client::connect(config, (host, port), handler),
+    )
+    .await
+    .with_context(|| format!("connecting to {host}:{port} timed out"))?
+    .with_context(|| format!("connecting to {host}:{port}"))?;
+    let _ = handle
+        .disconnect(russh::Disconnect::ByApplication, "", "en")
+        .await;
+    let fp = observed.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    fp.context("ssh server presented no host key")
 }
 
 /// `Sig` keeps its name accessor private; map the standard signals and

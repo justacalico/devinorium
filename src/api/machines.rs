@@ -599,7 +599,7 @@ async fn test_connection(
         Err(_) => return map_err_internal(anyhow::anyhow!("invalid stored port")).into_response(),
     };
     let out = match machine.kind.as_str() {
-        KIND_SSH => probe_ssh(&state, &machine, port).await,
+        KIND_SSH => probe_ssh(&state, &machine, port, user.id).await,
         _ => probe_vnc(&machine, port).await,
     };
     if out.ok {
@@ -647,8 +647,35 @@ async fn probe_vnc(machine: &MachineRow, port: u16) -> MachineTestOut {
     }
 }
 
-async fn probe_ssh(state: &AppState, machine: &MachineRow, port: u16) -> MachineTestOut {
+async fn probe_ssh(
+    state: &AppState,
+    machine: &MachineRow,
+    port: u16,
+    user_id: i64,
+) -> MachineTestOut {
     let probe = tokio::time::timeout(PROBE_TIMEOUT, async {
+        // First contact only learns and pins the host key; credentials
+        // never reach a host the owner has not had a chance to verify.
+        if machine.ssh_fingerprint.is_empty() {
+            let fp = crate::ssh::probe_fingerprint(&machine.host, port).await?;
+            if let Err(e) = state.db.pin_machine_fingerprint(machine.id, &fp).await {
+                tracing::warn!(machine_id = machine.id, "failed to pin ssh host key: {e}");
+                anyhow::bail!("learned ssh host key {fp} but failed to store the pin");
+            }
+            let _ = state
+                .db
+                .audit(
+                    Some(user_id),
+                    "machine.pin_host_key",
+                    &serde_json::json!({
+                        "machine_id": machine.id,
+                        "fingerprint": fp,
+                    }),
+                    None,
+                )
+                .await;
+            anyhow::bail!("pinned new ssh host key {fp}; run the test again to verify credentials");
+        }
         let mut session = crate::ssh::SshSession::connect(
             &machine.host,
             port,
@@ -658,17 +685,6 @@ async fn probe_ssh(state: &AppState, machine: &MachineRow, port: u16) -> Machine
             &machine.ssh_fingerprint,
         )
         .await?;
-        // Trust-on-first-use: pin the host key seen on this probe so later
-        // connections reject a different server.
-        if machine.ssh_fingerprint.is_empty() && !session.fingerprint.is_empty() {
-            if let Err(e) = state
-                .db
-                .pin_machine_fingerprint(machine.id, &session.fingerprint)
-                .await
-            {
-                tracing::warn!(machine_id = machine.id, "failed to pin ssh host key: {e}");
-            }
-        }
         // `hostname` exists on cmd.exe, PowerShell, and every shell —
         // the one probe that works across SSH targets.
         let out = session.exec("hostname").await?;

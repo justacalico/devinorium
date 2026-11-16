@@ -475,6 +475,14 @@ async fn exec(
         .clamp(Duration::from_secs(1), MAX_EXEC_TIMEOUT);
 
     let outcome = tokio::time::timeout(timeout, async {
+        // A grant token must never be the first contact: pinning has to
+        // happen through the owner-facing test endpoint where the host
+        // key can actually be verified.
+        if machine.ssh_fingerprint.is_empty() {
+            anyhow::bail!(
+                "ssh host key is not pinned; the owner must test the machine connection first"
+            );
+        }
         let mut session = crate::ssh::SshSession::connect(
             &machine.host,
             port,
@@ -484,17 +492,6 @@ async fn exec(
             &machine.ssh_fingerprint,
         )
         .await?;
-        // Trust-on-first-use: pin the host key once so later runs reject a
-        // different server.
-        if machine.ssh_fingerprint.is_empty() && !session.fingerprint.is_empty() {
-            if let Err(e) = state
-                .db
-                .pin_machine_fingerprint(machine_id, &session.fingerprint)
-                .await
-            {
-                tracing::warn!(machine_id, "failed to pin ssh host key: {e}");
-            }
-        }
         let out = session.exec(&req.command).await?;
         session.disconnect().await;
         anyhow::Ok(out)
