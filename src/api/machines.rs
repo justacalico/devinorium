@@ -495,7 +495,8 @@ async fn update(
     // or port clears it unless the request says otherwise. Resending the
     // same values (the Flutter editor always does) is not a change.
     let moved = host.as_deref().is_some_and(|h| h != existing.host)
-        || port.is_some_and(|p| p != existing.port);
+        || port.is_some_and(|p| p != existing.port)
+        || kind.as_deref().is_some_and(|k| k != existing.kind);
     let ssh_fingerprint = match ssh_fingerprint {
         Some(_) => ssh_fingerprint,
         None if moved => Some(String::new()),
@@ -512,6 +513,12 @@ async fn update(
         password,
         ssh_key,
     };
+    // Revoke before the write lands: over-revoking on a failed update is
+    // harmless, while the reverse order leaves a window where a minted
+    // token can act against the re-pointed host.
+    if moved {
+        state.machine_grants.revoke_machine(id);
+    }
     match state.db.update_machine(id, &patch).await {
         Ok(Some(m)) => {
             let _ = state
@@ -540,6 +547,7 @@ async fn remove(
     }
     match state.db.delete_machine(id).await {
         Ok(true) => {
+            state.machine_grants.revoke_machine(id);
             let _ = state
                 .db
                 .audit(
