@@ -177,7 +177,7 @@ async fn pair_node(
     if !user.is_owner {
         return forbidden();
     }
-    let Some(base_url) = clean_node_base_url(&req.url) else {
+    let Some(base_url) = clean_node_base_url(&req.url).await else {
         return bad_request("invalid url");
     };
     if req.code.trim().is_empty() {

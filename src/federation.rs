@@ -22,7 +22,7 @@ pub const PROXY_USER_HEADER: &str = "x-devinorium-proxy-user";
 /// private-network hosts: a remote http node would expose the node token
 /// and all proxied traffic to on-path observers. LAN addresses are the
 /// point of the feature, so private ranges stay reachable.
-pub fn clean_node_base_url(raw: &str) -> Option<String> {
+pub async fn clean_node_base_url(raw: &str) -> Option<String> {
     let url = raw.trim().trim_end_matches('/');
     if url.len() > 512 {
         return None;
@@ -30,7 +30,7 @@ pub fn clean_node_base_url(raw: &str) -> Option<String> {
     let parsed = reqwest::Url::parse(url).ok()?;
     let ok_scheme = match parsed.scheme() {
         "https" => true,
-        "http" => plaintext_node_host(parsed.host_str()),
+        "http" => plaintext_node_host(parsed.host_str()).await,
         _ => false,
     };
     let bare = parsed.path() == "/" || parsed.path().is_empty();
@@ -47,8 +47,37 @@ pub fn clean_node_base_url(raw: &str) -> Option<String> {
     Some(url.to_string())
 }
 
+/// Whether an address is LAN-confined, i.e. plaintext http toward it
+/// cannot route onto the public internet. 100.64/10 is CGNAT, which is
+/// also the Tailscale range — tailnet transport is WireGuard, so the http
+/// scheme only wraps the API framing inside the tunnel.
+fn plaintext_node_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(ip) => {
+            ip.is_loopback()
+                || ip.is_private()
+                || ip.is_link_local()
+                || (ip.octets()[0] == 100 && ip.octets()[1] & 0xC0 == 0x40)
+        }
+        std::net::IpAddr::V6(ip) => {
+            ip.is_loopback()
+                || ip.is_unique_local()
+                || ip.is_unicast_link_local()
+                || ip.to_ipv4_mapped().is_some_and(plaintext_node_ip_v4_map)
+        }
+    }
+}
+
+fn plaintext_node_ip_v4_map(v4: std::net::Ipv4Addr) -> bool {
+    plaintext_node_ip(std::net::IpAddr::V4(v4))
+}
+
 /// Hosts where plaintext http traffic stays on the local machine or LAN.
-fn plaintext_node_host(host: Option<&str>) -> bool {
+/// Named hosts must additionally resolve *only* to LAN-confined addresses:
+/// a `.internal` or single-label name can be pointed at a public IP through
+/// search-domain or DHCP DNS, and cleartext to it would carry the node
+/// token onto the internet.
+async fn plaintext_node_host(host: Option<&str>) -> bool {
     let Some(host) = host.map(|h| h.trim_end_matches('.')) else {
         return false;
     };
@@ -57,38 +86,33 @@ fn plaintext_node_host(host: Option<&str>) -> bool {
         .and_then(|h| h.strip_suffix(']'))
         .unwrap_or(host);
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-        return match ip {
-            std::net::IpAddr::V4(ip) => {
-                ip.is_loopback()
-                    || ip.is_private()
-                    || ip.is_link_local()
-                    // 100.64/10: CGNAT, which is also the Tailscale range.
-                    || (ip.octets()[0] == 100 && ip.octets()[1] & 0xC0 == 0x40)
-            }
-            std::net::IpAddr::V6(ip) => {
-                ip.is_loopback()
-                    || ip.is_unique_local()
-                    || ip.is_unicast_link_local()
-                    || ip
-                        .to_ipv4_mapped()
-                        .is_some_and(|v4| plaintext_node_host(Some(&v4.to_string())))
-            }
-        };
+        return plaintext_node_ip(ip);
     }
     // Anything left with a colon is a v6 literal in some bracketing; IP
     // rules above already decided those.
-    !host.contains(':')
-        && (host == "localhost"
-            || host.ends_with(".localhost")
-            || host.ends_with(".local")
-            || host.ends_with(".internal")
-            || host.ends_with(".lan")
-            || host.ends_with(".home.arpa")
-            // Tailnet names resolve to 100.64/10, which is WireGuard
-            // transport, not plaintext internet.
-            || host.ends_with(".ts.net")
-            // Single-label names only resolve through local search domains.
-            || !host.contains('.'))
+    if host.contains(':') {
+        return false;
+    }
+    // localhost resolves to loopback on every sane resolver; skip lookup.
+    if host == "localhost" || host.ends_with(".localhost") {
+        return true;
+    }
+    let lan_named = host.ends_with(".local")
+        || host.ends_with(".internal")
+        || host.ends_with(".lan")
+        || host.ends_with(".home.arpa")
+        || host.ends_with(".ts.net")
+        || !host.contains('.');
+    if !lan_named {
+        return false;
+    }
+    match tokio::net::lookup_host(format!("{host}:0")).await {
+        Ok(addrs) => {
+            let addrs: Vec<_> = addrs.collect();
+            !addrs.is_empty() && addrs.iter().all(|a| plaintext_node_ip(a.ip()))
+        }
+        Err(_) => false,
+    }
 }
 
 /// Build the HTTP client used for node calls. There is deliberately no
@@ -129,34 +153,37 @@ pub fn short_http_client() -> reqwest::Client {
 mod tests {
     use super::clean_node_base_url;
 
-    #[test]
-    fn clean_node_base_url_accepts_plain_origins() {
+    #[tokio::test]
+    async fn clean_node_base_url_accepts_plain_origins() {
         assert_eq!(
-            clean_node_base_url("http://192.168.1.10:7878").as_deref(),
+            clean_node_base_url("http://192.168.1.10:7878")
+                .await
+                .as_deref(),
             Some("http://192.168.1.10:7878")
         );
         assert_eq!(
-            clean_node_base_url("https://node.example.com/").as_deref(),
+            clean_node_base_url("https://node.example.com/")
+                .await
+                .as_deref(),
             Some("https://node.example.com")
         );
-        assert!(clean_node_base_url(" http://host:1 ").is_some());
         for ok in [
-            "http://satellite.local:7878",
-            "http://nas.lan",
-            "http://box.internal:7878",
-            "http://gw.home.arpa",
             "http://100.64.1.2:7878",
-            "http://node.tailnet.ts.net",
             "http://dev.localhost:7878",
             "http://localhost.:7878",
             "http://[::ffff:192.168.1.1]:7878",
         ] {
-            assert!(clean_node_base_url(ok).is_some(), "{ok}");
+            assert!(clean_node_base_url(ok).await.is_some(), "{ok}");
         }
+        // LAN-named hosts additionally require the name to resolve only to
+        // LAN addresses; `.invalid` is a guaranteed NXDOMAIN.
+        assert!(clean_node_base_url("http://no-such-node.invalid:7878")
+            .await
+            .is_none());
     }
 
-    #[test]
-    fn clean_node_base_url_rejects_remote_plaintext() {
+    #[tokio::test]
+    async fn clean_node_base_url_rejects_remote_plaintext() {
         // Node tokens and all proxied traffic ride this connection, so
         // cleartext is only acceptable where it cannot leave the LAN.
         for bad in [
@@ -165,16 +192,18 @@ mod tests {
             "http://8.8.8.8",
             "http://[2606:4700:4700::1111]",
         ] {
-            assert_eq!(clean_node_base_url(bad), None, "{bad}");
+            assert_eq!(clean_node_base_url(bad).await, None, "{bad}");
         }
         assert_eq!(
-            clean_node_base_url("https://node.example.com").as_deref(),
+            clean_node_base_url("https://node.example.com")
+                .await
+                .as_deref(),
             Some("https://node.example.com")
         );
     }
 
-    #[test]
-    fn clean_node_base_url_rejects_non_origin_urls() {
+    #[tokio::test]
+    async fn clean_node_base_url_rejects_non_origin_urls() {
         for bad in [
             "ftp://host",
             "http://",
@@ -185,7 +214,7 @@ mod tests {
             "http://user@host",
             "http://user:pass@host",
         ] {
-            assert_eq!(clean_node_base_url(bad), None, "{bad}");
+            assert_eq!(clean_node_base_url(bad).await, None, "{bad}");
         }
     }
 }
