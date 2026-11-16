@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
@@ -7,6 +8,7 @@ import 'package:devinorium_frontend/servers/multi_server_state.dart';
 import 'package:devinorium_frontend/servers/server_profile.dart';
 import 'package:devinorium_frontend/services/notification_service.dart';
 import 'package:devinorium_frontend/services/version_checker.dart';
+import 'package:devinorium_frontend/utils/link_opener_io.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/theme/theme.dart';
 import 'package:devinorium_frontend/views/settings_page.dart';
@@ -2803,7 +2805,9 @@ void main() {
           }
           return null;
         });
+    xdgOpenRunnerOverride = (exe, args) async => ProcessResult(1, 1, '', '');
     addTearDown(() {
+      xdgOpenRunnerOverride = null;
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
     });
