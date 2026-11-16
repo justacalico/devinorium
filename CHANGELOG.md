@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.115.5 - 2026-11-16
+#### Bug Fixes
+- 删除线程时保留仍被引用的工作区 - (198f624) - HttpAnimations
+- 推送端点限制公网地址防止内网探测 - (1d23e69) - HttpAnimations
+
+- - -
+
 ## v0.115.4 - 2026-11-16
 #### Bug Fixes
 - 修复 clippy 未内联格式化参数告警 - (6db77dd) - HttpAnimations
