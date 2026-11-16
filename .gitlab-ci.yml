@@ -50,13 +50,15 @@ github-sync:
         SINCE=""
         if [ -n "$REMOTE_SHA" ] && [ "$REMOTE_SHA" = "$LOCAL_SHA" ]; then
           echo "Tag $CI_COMMIT_TAG already mirrored to GitHub at $REMOTE_SHA, skipping"
+        elif [ -n "$REMOTE_SHA" ] && ! git merge-base --is-ancestor "${REMOTE_SHA}^{commit}" "$LOCAL_SHA" 2>/dev/null; then
+          echo "GitHub's $CI_COMMIT_TAG is not an ancestor of $LOCAL_SHA, skipping mirror push"
         else
           SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           git push -f github "$CI_COMMIT_TAG"
         fi
         # v* tags trigger the release build on GitHub; watch it so a failed
         # release build fails this pipeline.
-        if echo "$CI_COMMIT_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+        if echo "$CI_COMMIT_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
           SHA=$(git rev-parse "$CI_COMMIT_TAG^{commit}")
           RUN_ID=$(bash scripts/watch-github-run.sh find --sha "$SHA" --event push ${SINCE:+--since "$SINCE"} || true)
           if [ -z "$RUN_ID" ]; then
@@ -133,7 +135,7 @@ auto-release:
     - install -m 755 /tmp/cog/x86_64-unknown-linux-musl/cog /usr/local/bin/cog
     - git config user.name "GitLab CI"
     - git config user.email "ci@gitlab.com"
-    - git remote set-url origin "https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - git remote set-url origin "https://${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
   script:
     - bash scripts/auto-release.sh
 

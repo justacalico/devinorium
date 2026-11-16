@@ -44,4 +44,10 @@ if ! ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null 2>&1; then
   exit 1
 fi
 
-ssh-keyscan -t ed25519 "$HOST" > ~/.ssh/known_hosts
+ssh-keyscan -t ed25519 "$HOST" > ~/.ssh/known_hosts.tmp
+if [ -s ~/.ssh/known_hosts.tmp ]; then
+  mv ~/.ssh/known_hosts.tmp ~/.ssh/known_hosts
+else
+  rm -f ~/.ssh/known_hosts.tmp
+  echo "WARNING: ssh-keyscan returned no keys for $HOST" >&2
+fi

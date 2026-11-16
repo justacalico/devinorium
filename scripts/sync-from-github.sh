@@ -23,14 +23,16 @@ echo "Syncing GitHub release: $RELEASE_TAG"
 # different commit (e.g. a version bump), so we use the tag's target commit.
 RELEASE_COMMIT=$(gh api "repos/$GITHUB_REPO/commits?sha=$RELEASE_TAG&per_page=1" -q '.[0].sha' 2>/dev/null || true)
 if [ -z "$RELEASE_COMMIT" ]; then
-  echo "Warning: could not resolve tag $RELEASE_TAG on GitHub, falling back to $CI_COMMIT_SHA" >&2
-  RELEASE_COMMIT="$CI_COMMIT_SHA"
+  echo "Error: could not resolve tag $RELEASE_TAG on GitHub" >&2
+  exit 1
 fi
 
 # Download assets from the GitHub release.
 rm -rf release-assets SHA256SUMS.txt
 mkdir -p release-assets
 gh release download "$RELEASE_TAG" -R "$GITHUB_REPO" --dir release-assets
+# A checksum file regenerated below must not hash its own stale copy.
+rm -f release-assets/SHA256SUMS.txt
 
 # Fetch GitHub Actions job logs if a run ID was provided.
 if [ -n "$GITHUB_RUN_ID" ]; then

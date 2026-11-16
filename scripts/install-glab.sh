@@ -7,7 +7,7 @@ if command -v glab >/dev/null 2>&1; then
 fi
 
 version="${GLAB_VERSION:-1.113.0}"
-arch="${CI_RUNNER_ARCH:-amd64}"
+arch="${CI_RUNNER_EXECUTABLE_ARCH:-amd64}"
 case "$arch" in
   arm|armv7l) arch="armv6" ;;
   aarch64|arm64) arch="arm64" ;;

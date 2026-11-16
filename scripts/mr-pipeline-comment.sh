@@ -42,7 +42,7 @@ post_or_update() {
   local body="$1"
   local note_id="" page_notes count found
   for page in 1 2 3 4 5; do
-    page_notes=$(curl -fsS --header "@$AUTH_HEADER_FILE" "${API_BASE}/projects/${PROJECT_ID}/merge_requests/${MR_IID}/notes?per_page=100&page=${page}")
+    page_notes=$(curl -fsS --header "@$AUTH_HEADER_FILE" "${API_BASE}/projects/${PROJECT_ID}/merge_requests/${MR_IID}/notes?per_page=100&page=${page}&sort=desc&order_by=updated_at")
     found=$(printf '%s' "$page_notes" | jq -r --arg marker "$MARKER" '[.[] | select(.body != null and (.body | contains($marker))) | .id] | first // empty')
     if [ -n "$found" ] && [ "$found" != "null" ]; then
       note_id="$found"
