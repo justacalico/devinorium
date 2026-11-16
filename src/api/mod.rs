@@ -3,6 +3,7 @@
 pub mod accounts;
 pub mod audit;
 pub mod auth;
+pub mod browser;
 pub mod clones;
 pub mod federation;
 pub mod files;

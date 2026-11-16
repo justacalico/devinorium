@@ -1031,6 +1031,7 @@ mod tests {
             cancel_signal: None,
             max_output_tokens: None,
             mcp_servers: Vec::new(),
+            browser_feed_token: None,
         }
     }
 

@@ -636,6 +636,9 @@ pub(super) async fn delete(
                 .wait_finished(&id, std::time::Duration::from_secs(15))
                 .await;
             cleanup_thread_worktree(&state, &thread, None, None).await;
+            // The feed token dies with the thread: any browser-mcp still
+            // posting gets 401s and its capture loop exits.
+            state.browser_feeds.remove(&id);
             Json(serde_json::json!({"ok": true})).into_response()
         }
         Ok(None) => Json(serde_json::json!({"ok": true})).into_response(),

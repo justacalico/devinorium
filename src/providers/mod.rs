@@ -157,6 +157,11 @@ pub struct SendOptions {
     /// `session/load`, while Devin and Codex get the full list merged into
     /// their config files so `disabled` flags round-trip.
     pub mcp_servers: Vec<crate::mcp::McpServerConfig>,
+    /// Feed token for the live agent-browser view. Only remote providers
+    /// use it: the satellite points the builtin browser server at its own
+    /// ingest endpoint with this credential. Local runs carry the same
+    /// token in the MCP env instead.
+    pub browser_feed_token: Option<String>,
 }
 
 impl std::fmt::Debug for SendOptions {

@@ -4213,6 +4213,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Will be created under ~/.devinorium/projects/{name} on {node}'**
   String createProjectDestinationNode(Object name, Object node);
+
+  /// Title of the agent browser panel
+  ///
+  /// In en, this message translates to:
+  /// **'Browser'**
+  String get browser;
+
+  /// Empty state in the browser panel when no browser session is live
+  ///
+  /// In en, this message translates to:
+  /// **'The agent\'s browser shows up here while it browses.'**
+  String get browserEmpty;
+
+  /// Empty state in the browser panel when web access is disabled
+  ///
+  /// In en, this message translates to:
+  /// **'Web access is off. Enable it in Settings to watch the agent browse.'**
+  String get browserWebAccessOff;
+
+  /// Tooltip for hiding the browser panel
+  ///
+  /// In en, this message translates to:
+  /// **'Hide browser'**
+  String get browserHide;
 }
 
 class _AppLocalizationsDelegate

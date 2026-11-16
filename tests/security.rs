@@ -89,6 +89,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
             std::collections::HashMap::new(),
         )),
         rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
+        browser_feeds: devinorium::browser_feed::Feeds::default(),
     };
     (devinorium::build_app(state), database)
 }
@@ -452,6 +453,7 @@ async fn body_size_limit_rejects_oversized() {
             std::collections::HashMap::new(),
         )),
         rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
+        browser_feeds: devinorium::browser_feed::Feeds::default(),
     };
     let app = devinorium::build_app(state);
 

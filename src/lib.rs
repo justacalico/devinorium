@@ -7,6 +7,7 @@ pub mod api;
 pub mod assets;
 pub mod auth;
 pub mod browser;
+pub mod browser_feed;
 pub mod config;
 pub mod db;
 pub mod federation;
@@ -102,6 +103,9 @@ pub struct AppState {
     /// endpoint class; auth/login code debits extra on failures so probes
     /// cannot hide behind header tricks or rotating source IPs.
     pub rate_limiter: security::RateLimiter,
+    /// Live browser feeds keyed by thread id; entries carry the minted
+    /// token browser-mcp posts back with plus the viewer broadcast.
+    pub browser_feeds: browser_feed::Feeds,
 }
 
 impl AppState {
@@ -219,10 +223,12 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::server::router())
         .merge(api::machine_control::router())
         .merge(api::shared::router())
+        .merge(api::browser::feed_router())
         .route_layer(RequestBodyLimitLayer::new(max_body));
 
     // Protected routes (require auth + role=user).
     let protected = api::threads::router()
+        .merge(api::browser::ws_router())
         .merge(api::files::router())
         .merge(api::projects::router())
         .merge(api::project_groups::router())

@@ -863,6 +863,7 @@ abstract class AppStateBase extends ChangeNotifier {
   bool get agentPanelOpen;
   bool get agentPanelUserSet;
   TerminalStore get terminalStore;
+  BrowserPanelStore get browserPanelStore;
   double get editorAgentPanelWidth;
   bool get hasDirtyEditorTabs;
   void setEditorAgentPanelWidth(double v);

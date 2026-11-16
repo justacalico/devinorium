@@ -1936,5 +1936,21 @@
       "name": {},
       "node": {}
     }
+  },
+  "browser": "Browser",
+  "@browser": {
+    "description": "Title of the agent browser panel"
+  },
+  "browserEmpty": "The agent's browser shows up here while it browses.",
+  "@browserEmpty": {
+    "description": "Empty state in the browser panel when no browser session is live"
+  },
+  "browserWebAccessOff": "Web access is off. Enable it in Settings to watch the agent browse.",
+  "@browserWebAccessOff": {
+    "description": "Empty state in the browser panel when web access is disabled"
+  },
+  "browserHide": "Hide browser",
+  "@browserHide": {
+    "description": "Tooltip for hiding the browser panel"
   }
 }

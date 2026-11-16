@@ -629,6 +629,10 @@ mod tests {
                 std::time::Duration::from_secs(60),
                 std::time::Duration::from_secs(60),
             ),
+            bind_host: "127.0.0.1".into(),
+            bind_port: 0,
+            bound_addr: std::sync::OnceLock::new(),
+            browser_feeds: Mutex::new(HashMap::new()),
             state_file: dir.path().join("state.json"),
             pair_attempts: Mutex::new(HashMap::new()),
         }

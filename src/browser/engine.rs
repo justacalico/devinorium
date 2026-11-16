@@ -159,6 +159,13 @@ impl ChromiumEngine {
             .await
             .map_err(|e| format!("could not open a tab: {e}"))?;
 
+        // Mirror the viewport back to the devinorium that configured this
+        // run, when it asked for a live feed. The clone shares the same
+        // target; the capture loop only reads, never touches the page.
+        if let Some(cfg) = super::feed::FeedConfig::from_env() {
+            super::feed::spawn(page.clone(), cfg);
+        }
+
         Ok(Self {
             browser,
             page,

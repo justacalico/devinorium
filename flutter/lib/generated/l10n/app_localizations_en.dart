@@ -2413,4 +2413,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String createProjectDestinationNode(Object name, Object node) {
     return 'Will be created under ~/.devinorium/projects/$name on $node';
   }
+
+  @override
+  String get browser => 'Browser';
+
+  @override
+  String get browserEmpty =>
+      'The agent\'s browser shows up here while it browses.';
+
+  @override
+  String get browserWebAccessOff =>
+      'Web access is off. Enable it in Settings to watch the agent browse.';
+
+  @override
+  String get browserHide => 'Hide browser';
 }

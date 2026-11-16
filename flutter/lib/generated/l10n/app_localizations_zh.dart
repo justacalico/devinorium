@@ -2295,4 +2295,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String createProjectDestinationNode(Object name, Object node) {
     return '将在 $node 的 ~/.devinorium/projects/$name 下创建';
   }
+
+  @override
+  String get browser => '浏览器';
+
+  @override
+  String get browserEmpty => '代理使用浏览器时，画面会显示在这里。';
+
+  @override
+  String get browserWebAccessOff => '网页访问已关闭，请在设置中开启后可查看代理浏览器。';
+
+  @override
+  String get browserHide => '隐藏浏览器';
 }

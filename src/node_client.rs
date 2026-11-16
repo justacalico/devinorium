@@ -452,17 +452,27 @@ impl NodeClient {
 
     /// WebSocket URL for a terminal session on the node.
     pub fn terminal_ws_url(&self, session_id: &str) -> String {
-        let http = format!(
+        Self::ws_url(&format!(
             "{}/api/node/terminal/sessions/{}/ws",
             self.base_url,
             enc_seg(session_id)
-        );
+        ))
+    }
+
+    /// WebSocket URL for the node's browser feed. The feed token travels
+    /// in [`crate::browser_feed::FEED_TOKEN_HEADER`], not the URL, so it
+    /// stays out of request logs.
+    pub fn browser_feed_ws_url(&self) -> String {
+        Self::ws_url(&format!("{}/api/node/browser-feed/ws", self.base_url))
+    }
+
+    fn ws_url(http: &str) -> String {
         if let Some(rest) = http.strip_prefix("https://") {
             format!("wss://{rest}")
         } else if let Some(rest) = http.strip_prefix("http://") {
             format!("ws://{rest}")
         } else {
-            http
+            http.to_string()
         }
     }
 

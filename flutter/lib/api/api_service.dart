@@ -1594,17 +1594,34 @@ class ApiService {
 
   /// Build the WebSocket URL for a remote terminal session.
   Future<Uri> terminalWebSocketUri(String sessionId) async {
+    return _webSocketUri('/api/terminal/sessions/$sessionId/ws');
+  }
+
+  /// Build the WebSocket URL streaming a thread's agent-browser feed.
+  Future<Uri> browserWebSocketUri(String threadId) async {
+    return _webSocketUri('/api/threads/$threadId/browser/ws');
+  }
+
+  Future<Uri> _webSocketUri(String apiPath) async {
     final base = await _client.serverUrl;
-    final path = '${_client.pathPrefix}/api/terminal/sessions/$sessionId/ws';
+    final path = '${_client.pathPrefix}$apiPath';
     if (base == null || base.isEmpty) {
       // Web build: same origin, but the DOM WebSocket still needs an
-      // absolute ws(s) URL — a path-only URI is rejected.
+      // absolute ws(s) URL — a path-only URI is rejected. Keep any subpath
+      // the app is hosted under (in tests Uri.base is file:///, so the
+      // prefix only applies to real http(s) deployments).
       final webBase = Uri.base;
+      final httpBase = webBase.isScheme('http') || webBase.isScheme('https');
+      final prefix = !httpBase
+          ? ''
+          : (webBase.path.endsWith('/')
+                ? webBase.path.substring(0, webBase.path.length - 1)
+                : webBase.path);
       return Uri(
         scheme: webBase.scheme == 'https' ? 'wss' : 'ws',
         host: webBase.host,
         port: webBase.hasPort ? webBase.port : null,
-        path: path,
+        path: '$prefix$path',
       );
     }
     // Keep any subpath the server is hosted under; replace(path:) alone

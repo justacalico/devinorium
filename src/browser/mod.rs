@@ -13,6 +13,7 @@
 
 pub mod action;
 mod engine;
+pub mod feed;
 mod mcp;
 mod tools;
 
