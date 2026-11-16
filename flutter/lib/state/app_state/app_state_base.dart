@@ -680,19 +680,19 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> refreshRunningThreads();
   Future<void> loadUsers();
   Future<void> loadSettingsData();
-  Future<void> createUser({required String username, required String password});
+  Future<bool> createUser({required String username, required String password});
   Future<void> setUserDisabled(int id, bool disabled);
   Future<String?> changePassword(String current, String newPassword);
   Future<String?> resetUserPassword(int id, String password);
   Future<void> logout({bool force = false});
   Future<void> selectProject(int id);
   Future<void> selectAllProjects();
-  Future<void> createProject({
+  Future<bool> createProject({
     required String name,
     required String path,
     String? nodeId,
   });
-  Future<void> createNewProject(String name, {String? nodeId});
+  Future<bool> createNewProject(String name, {String? nodeId});
   void openAddProjectDialog();
   void openCloneRepoDialog();
   Future<String?> cloneRepo(String url, {String? nodeId});
