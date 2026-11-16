@@ -48,7 +48,6 @@ class AttachmentThumb extends StatelessWidget {
                   fit: BoxFit.cover,
                   gaplessPlayback: true,
                   cacheWidth: (120 * dpr).round(),
-                  cacheHeight: (80 * dpr).round(),
                   errorBuilder: (context, error, stackTrace) => Center(
                     child: Icon(
                       Icons.broken_image_outlined,

@@ -10,8 +10,15 @@ void main() {
   });
 
   testWidgets('ThreadTag capitalizes label', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: ThreadTag('needs approval')));
+    await tester.pumpWidget(
+      const MaterialApp(home: ThreadTag('needs approval')),
+    );
     expect(find.text('Needs approval'), findsOneWidget);
+  });
+
+  testWidgets('ThreadTag localizes the needs answer tag', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: ThreadTag('needs answer')));
+    expect(find.text('Input'), findsOneWidget);
   });
 
   testWidgets('ThreadTag renders running and done', (tester) async {
