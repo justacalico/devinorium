@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.116.0 - 2026-11-16
+#### Features
+- 前端新增代理浏览器实时预览面板 - (4cd441b) - HttpAnimations
+- 新增代理浏览器实时画面通道 - (633e0ff) - HttpAnimations
+#### Bug Fixes
+- 修复 clippy 检查告警 - (7c65c9e) - HttpAnimations
+
+- - -
+
 ## v0.115.7 - 2026-11-16
 #### Bug Fixes
 - 布尔环境变量解析统一为 truthy - (8969271) - HttpAnimations

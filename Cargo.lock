@@ -1155,7 +1155,7 @@ dependencies = [
 
 [[package]]
 name = "devinorium"
-version = "0.115.7"
+version = "0.116.0"
 dependencies = [
  "agent-client-protocol",
  "anyhow",
