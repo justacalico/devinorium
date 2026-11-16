@@ -495,10 +495,9 @@ mod tests {
     fn attach_browser_feed_sets_env_only_on_builtin() {
         let mut servers = vec![stdio("mine")];
         attach_browser_feed(&mut servers, "http://127.0.0.1:1/api/browser-feed", "bf_x");
-        assert!(servers[0]
+        assert!(!servers[0]
             .env
-            .get(crate::browser_feed::FEED_URL_ENV)
-            .is_none());
+            .contains_key(crate::browser_feed::FEED_URL_ENV));
 
         inject_builtin_browser(&mut servers, true);
         attach_browser_feed(&mut servers, "http://127.0.0.1:1/api/browser-feed", "bf_x");
