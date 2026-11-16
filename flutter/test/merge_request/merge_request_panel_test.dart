@@ -158,7 +158,9 @@ void main() {
     expect(find.byType(MergeRequestPanel), findsNothing);
   });
 
-  testWidgets('opens a job log dialog when a job row is tapped', (tester) async {
+  testWidgets('opens a job log dialog when a job row is tapped', (
+    tester,
+  ) async {
     final mock = MockClient((req) async {
       final path = req.url.path;
       final query = req.url.queryParameters;
@@ -247,6 +249,129 @@ void main() {
 
     expect(find.byType(JobLogDialog), findsOneWidget);
     expect(find.text('build output'), findsOneWidget);
+  });
+
+  testWidgets('closing the panel removes an open job log dialog', (
+    tester,
+  ) async {
+    final mock = MockClient((req) async {
+      final path = req.url.path;
+      final query = req.url.queryParameters;
+
+      if (path == '/api/git-connections/gitlab/pipelines/jobs/logs') {
+        return _json(200, {
+          'job': {
+            'id': 101,
+            'name': 'cargo test',
+            'status': 'success',
+            'stage': 'test',
+            'web_url': '',
+            'started_at': '',
+            'finished_at': '',
+            'duration': 0,
+          },
+          'trace': 'build output',
+        });
+      }
+
+      if (path == '/api/git-connections/gitlab/pipelines/jobs') {
+        return _json(200, [
+          {
+            'id': 101,
+            'name': 'cargo test',
+            'status': 'success',
+            'stage': 'test',
+            'web_url': '',
+            'started_at': '',
+            'finished_at': '',
+            'duration': 0,
+          },
+        ]);
+      }
+
+      if (path == '/api/git-connections/gitlab/pipelines') {
+        return _json(200, [
+          {
+            'id': 42,
+            'status': 'success',
+            'name': 'test-and-build',
+            'web_url': '',
+            'ref_name': 'feature',
+          },
+        ]);
+      }
+
+      final proxyPath = query['path'] ?? '';
+      if (proxyPath.endsWith('/merge_requests/1')) {
+        return _json(200, {
+          'iid': 1,
+          'title': 'Test MR',
+          'state': 'opened',
+          'source_branch': 'feature',
+          'target_branch': 'main',
+          'web_url': 'https://gitlab.com/group/project/-/merge_requests/1',
+          'description': '',
+        });
+      }
+
+      return _json(200, {'_list': []});
+    });
+
+    final state = _appState(mock);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ChangeNotifierProvider<AppState>.value(
+          value: state,
+          child: const MergeRequestPanel(
+            url: 'https://gitlab.com/group/project/-/merge_requests/1',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Pipelines (1)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('test-and-build'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('cargo test'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(JobLogDialog), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(JobLogDialog), findsNothing);
+  });
+
+  testWidgets('swapping the injected provider reloads without disposing it', (
+    tester,
+  ) async {
+    final first = _TestProvider();
+    final second = _TestProvider();
+    final state = _appState(MockClient((_) async => _json(404, {})));
+
+    Widget build(MergeRequestProvider provider) => MaterialApp(
+      home: ChangeNotifierProvider<AppState>.value(
+        value: state,
+        child: MergeRequestPanel(
+          url: 'https://gitlab.com/group/project/-/merge_requests/1',
+          provider: provider,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(build(first));
+    await tester.pump();
+    await tester.pumpWidget(build(second));
+    await tester.pump();
+
+    expect(first.disposed, isFalse);
+    expect(second.disposed, isFalse);
   });
 
   testWidgets('does not rebuild after text scale changes', (tester) async {

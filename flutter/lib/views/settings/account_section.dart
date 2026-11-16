@@ -14,43 +14,12 @@ class _AccountSection extends StatelessWidget {
     required String confirmLabel,
     required Future<void> Function(String proof) action,
   }) async {
-    final controller = TextEditingController();
     final proof = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (message != null) ...[
-              Text(message),
-              const SizedBox(height: 12),
-            ],
-            Text(l10n(context).totpProofPrompt),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: l10n(context).passwordOrTotpCode,
-                border: const OutlineInputBorder(),
-              ),
-              onSubmitted: (v) => Navigator.of(context).pop(v),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n(context).cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: Text(confirmLabel),
-          ),
-        ],
+      builder: (context) => _TotpProofDialog(
+        title: title,
+        message: message,
+        confirmLabel: confirmLabel,
       ),
     );
     if (proof != null && proof.trim().isNotEmpty) {
@@ -116,6 +85,71 @@ class _AccountSection extends StatelessWidget {
                   ),
           ),
         ],
+      ],
+    );
+  }
+}
+
+class _TotpProofDialog extends StatefulWidget {
+  const _TotpProofDialog({
+    required this.title,
+    this.message,
+    required this.confirmLabel,
+  });
+
+  final String title;
+  final String? message;
+  final String confirmLabel;
+
+  @override
+  State<_TotpProofDialog> createState() => _TotpProofDialogState();
+}
+
+class _TotpProofDialogState extends State<_TotpProofDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = l10n(context);
+    return AlertDialog(
+      title: Text(widget.title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.message != null) ...[
+            Text(widget.message!),
+            const SizedBox(height: 12),
+          ],
+          Text(l.totpProofPrompt),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            obscureText: true,
+            decoration: InputDecoration(
+              labelText: l.passwordOrTotpCode,
+              border: const OutlineInputBorder(),
+            ),
+            onSubmitted: (v) => Navigator.of(context).pop(v),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l.cancel),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: Text(widget.confirmLabel),
+        ),
       ],
     );
   }

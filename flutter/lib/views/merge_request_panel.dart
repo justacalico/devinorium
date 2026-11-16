@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -28,11 +30,34 @@ class MergeRequestPanel extends StatefulWidget {
 class _MergeRequestPanelState extends State<MergeRequestPanel> {
   MergeRequestProvider? _provider;
   bool _ownsProvider = false;
+  ModalRoute<dynamic>? _jobLogRoute;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _provider ??= _createProvider();
+  }
+
+  @override
+  void didUpdateWidget(covariant MergeRequestPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The panel can be reused with a different URL or provider while
+    // mounted; drop the old state and reload instead of showing stale data.
+    if (oldWidget.url != widget.url || oldWidget.provider != widget.provider) {
+      // An open job log polls the outgoing provider; close it before the
+      // swap.
+      final jobLogRoute = _jobLogRoute;
+      _jobLogRoute = null;
+      if (jobLogRoute != null) {
+        scheduleMicrotask(() {
+          jobLogRoute.navigator?.removeRoute(jobLogRoute);
+        });
+      }
+      if (_ownsProvider) _provider?.dispose();
+      _ownsProvider = false;
+      _provider = null;
+      _provider = _createProvider();
+    }
   }
 
   MergeRequestProvider _createProvider() {
@@ -49,6 +74,17 @@ class _MergeRequestPanelState extends State<MergeRequestPanel> {
 
   @override
   void dispose() {
+    // The job-log dialog polls this panel's provider; close it before the
+    // provider is torn down or the poll outlives its data source. The
+    // removal is deferred because the navigator can be locked while the
+    // tree is unmounting.
+    final jobLogRoute = _jobLogRoute;
+    _jobLogRoute = null;
+    if (jobLogRoute != null) {
+      scheduleMicrotask(() {
+        jobLogRoute.navigator?.removeRoute(jobLogRoute);
+      });
+    }
     if (_ownsProvider) _provider?.dispose();
     super.dispose();
   }
@@ -58,15 +94,23 @@ class _MergeRequestPanelState extends State<MergeRequestPanel> {
     if (provider == null || !provider.supportsPipelines) return;
 
     final appState = context.read<AppState>();
-    showDialog(
+    // Push directly so the route handle exists before the widget can be
+    // disposed; showDialog only exposes it inside the builder.
+    final route = DialogRoute<void>(
       context: context,
-      builder: (context) => JobLogDialog(
+      builder: (dialogContext) => JobLogDialog(
         job: job,
         onLoad: () => provider.loadJobLog(job),
         onOpenInBrowser: job.webUrl.isNotEmpty && isOpenableLink(job.webUrl)
             ? () => appState.openLink(job.webUrl)
             : null,
       ),
+    );
+    _jobLogRoute = route;
+    unawaited(
+      Navigator.of(context, rootNavigator: true).push(route).then((_) {
+        if (identical(_jobLogRoute, route)) _jobLogRoute = null;
+      }),
     );
   }
 
