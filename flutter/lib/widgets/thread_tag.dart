@@ -55,6 +55,7 @@ class ThreadTag extends StatelessWidget {
     final l = l10n(context);
     return switch (tag.toLowerCase()) {
       'needs approval' => l.tagNeedsApproval,
+      'needs answer' => l.threadStatusInput,
       'running' => l.tagRunning,
       'working' => l.tagWorking,
       'failed' => l.tagFailed,

@@ -1734,6 +1734,24 @@ void main() {
       expect(ref.iid, 7);
     });
 
+    test('parses a project literally named merge_requests', () {
+      final ref = LinkedMergeRequestRef.tryParse(
+        'https://gitlab.example.com/group/merge_requests/-/merge_requests/5',
+      );
+      expect(ref, isNotNull);
+      expect(ref!.projectPath, 'group/merge_requests');
+      expect(ref.iid, 5);
+    });
+
+    test('parses a GitLab MR when the project path ends in pull', () {
+      final ref = LinkedMergeRequestRef.tryParse(
+        'https://gitlab.example.com/a/b/pull/-/merge_requests/5',
+      );
+      expect(ref, isNotNull);
+      expect(ref!.projectPath, 'a/b/pull');
+      expect(ref.iid, 5);
+    });
+
     test('rejects invalid or non-MR URLs', () {
       expect(
         LinkedMergeRequestRef.tryParse('https://gitlab.com/group/project'),

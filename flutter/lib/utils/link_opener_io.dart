@@ -1,27 +1,33 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-Future<void> openLinkImpl(String href) async {
+@visibleForTesting
+Future<ProcessResult> Function(String, List<String>)? xdgOpenRunnerOverride;
+
+Future<void> openLinkImpl(
+  String href, {
+  Future<ProcessResult> Function(String, List<String>)? runProcess,
+}) async {
   final uri = Uri.tryParse(href);
   if (uri == null) return;
+  var needsFallback = false;
   try {
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened) throw StateError('Could not open $href');
-  } on PlatformException {
-    if (Platform.isLinux) {
-      try {
-        final result = await Process.run('xdg-open', [href]);
-        if (result.exitCode != 0) {
-          throw StateError('Could not open $href');
-        }
-      } on Exception {
-        throw StateError('Could not open $href');
-      }
-    } else {
-      rethrow;
+    needsFallback = !await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } on Exception {
+    needsFallback = true;
+  }
+  if (!needsFallback) return;
+  if (Platform.isLinux) {
+    try {
+      final run = runProcess ?? xdgOpenRunnerOverride ?? Process.run;
+      final result = await run('xdg-open', [href]);
+      if (result.exitCode == 0) return;
+    } on Exception {
+      // xdg-open missing or failed; the StateError below reports it.
     }
   }
+  throw StateError('Could not open $href');
 }

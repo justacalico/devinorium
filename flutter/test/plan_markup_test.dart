@@ -13,12 +13,14 @@ After
     });
 
     test('removes proposed_plan blocks', () {
-      const text = r'<proposed_plan explanation="Plan"><step>X</step></proposed_plan>';
+      const text =
+          r'<proposed_plan explanation="Plan"><step>X</step></proposed_plan>';
       expect(stripPlanMarkup(text), '');
     });
 
     test('removes multiple plan blocks', () {
-      const text = 'a <update_plan><step>A</step></update_plan> b '
+      const text =
+          'a <update_plan><step>A</step></update_plan> b '
           '<proposed_plan><step>B</step></proposed_plan> c';
       expect(stripPlanMarkup(text), 'a  b  c');
     });
@@ -29,14 +31,31 @@ After
     });
 
     test('matches opening and closing tag pairs', () {
-      const text = r'<proposed_plan><step>A</step></proposed_plan>'
+      const text =
+          r'<proposed_plan><step>A</step></proposed_plan>'
           r'<update_plan><step>B</step></update_plan>';
       expect(stripPlanMarkup(text), '');
     });
 
     test('handles explanation attributes with special characters', () {
-      const text = r'<update_plan explanation="a > b"><step>A</step></update_plan>';
+      const text =
+          r'<update_plan explanation="a > b"><step>A</step></update_plan>';
       expect(stripPlanMarkup(text), '');
+    });
+
+    test('hides a plan block that is still streaming', () {
+      const text = 'a <proposed_plan><step>A</step>';
+      expect(stripPlanMarkup(text), 'a ');
+    });
+
+    test('keeps a self-closing tag and the text after it', () {
+      const text = 'a <update_plan/> b';
+      expect(stripPlanMarkup(text), text);
+    });
+
+    test('strips blocks with attributes other than explanation', () {
+      const text = r'<update_plan foo="x"><step>A</step></update_plan> b';
+      expect(stripPlanMarkup(text), ' b');
     });
   });
 }

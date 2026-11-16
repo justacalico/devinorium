@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:devinorium_frontend/utils/link_opener.dart';
+import 'package:devinorium_frontend/utils/link_opener_io.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -63,8 +66,35 @@ void main() {
     });
 
     expect(
-      openLink('https://example.com'),
+      openLinkImpl(
+        'https://example.com',
+        runProcess: (exe, args) async =>
+            ProcessResult(1, 1, '', 'no handler'),
+      ),
       throwsA(isA<StateError>()),
     );
   });
+
+  test('openLink falls back to xdg-open when the launcher declines', () async {
+    var xdgOpened = false;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'launch':
+          return false;
+      }
+      return null;
+    });
+
+    await openLinkImpl(
+      'https://example.com',
+      runProcess: (exe, args) async {
+        expect(exe, 'xdg-open');
+        expect(args, ['https://example.com']);
+        xdgOpened = true;
+        return ProcessResult(1, 0, '', '');
+      },
+    );
+    expect(xdgOpened, isTrue);
+  }, skip: !Platform.isLinux);
 }

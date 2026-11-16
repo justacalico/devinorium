@@ -9,8 +9,10 @@ AppLocalizations get appL10n => _appL10n;
 void setAppL10n(Locale locale) {
   final tag = locale.toLanguageTag();
   final code = tag.contains('-') ? tag.substring(0, tag.indexOf('-')) : tag;
-  final target = <String>['en', 'zh'].contains(code)
+  final target = AppLocalizations.supportedLocales
+      .map((l) => l.languageCode)
+      .contains(code)
       ? Locale(code)
-      : const Locale('en');
+      : AppLocalizations.supportedLocales.first;
   _appL10n = lookupAppLocalizations(target);
 }
