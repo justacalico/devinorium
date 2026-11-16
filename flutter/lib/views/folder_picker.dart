@@ -34,8 +34,8 @@ class FolderPicker extends StatefulWidget {
 }
 
 class _FolderPickerState extends State<FolderPicker> {
-  late final TextEditingController _ownController;
-  TextEditingController get _controller => widget.controller ?? _ownController;
+  TextEditingController? _ownController;
+  TextEditingController get _controller => widget.controller ?? _ownController!;
 
   final _pathSegments = <String>[];
   var _isAbsolute = false;
@@ -47,14 +47,16 @@ class _FolderPickerState extends State<FolderPicker> {
   @override
   void initState() {
     super.initState();
-    _ownController = TextEditingController();
+    if (widget.controller == null) {
+      _ownController = TextEditingController();
+    }
     _controller.text = widget.initialPath?.trim() ?? '';
     _jumpToTextPath();
   }
 
   @override
   void dispose() {
-    _ownController.dispose();
+    _ownController?.dispose();
     super.dispose();
   }
 
