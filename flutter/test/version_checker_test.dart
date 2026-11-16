@@ -155,18 +155,20 @@ void main() {
       expect(update.releaseUrl, VersionChecker.releasesUrl);
     });
 
-    test('close nulls the client so check can be called again', () async {
-      final mock = MockClient((req) async => _json(200, _releases(['v0.40.3'])));
+    test('check after close returns a benign result', () async {
+      var calls = 0;
+      final mock = MockClient((req) async {
+        calls += 1;
+        return _json(200, _releases(['v0.40.3']));
+      });
       final checker = VersionChecker(client: mock);
       await checker.check('0.40.2');
       checker.close();
 
-      // With the same mock passed in, reusing it works because the mock is not
-      // actually closed. The field is nulled when owned, but here _ownsClient is
-      // false so close is a no-op.
+      // A closed checker must not fire another request.
       final update = await checker.check('0.40.2');
-      expect(update.updateAvailable, isTrue);
-      expect(update.latestVersion, '0.40.3');
+      expect(update.updateAvailable, isFalse);
+      expect(calls, 1);
     });
   });
 }

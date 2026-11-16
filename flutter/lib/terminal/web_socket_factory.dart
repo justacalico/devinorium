@@ -1,7 +1,7 @@
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'web_socket_factory_stub.dart'
-    if (dart.library.html) 'web_socket_factory_web.dart'
+    if (dart.library.js_interop) 'web_socket_factory_web.dart'
     if (dart.library.io) 'web_socket_factory_io.dart';
 
 /// Open an authenticated terminal WebSocket.

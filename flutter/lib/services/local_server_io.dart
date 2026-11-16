@@ -434,11 +434,15 @@ class LocalServerManager implements LocalServerController {
     } catch (_) {}
   }
 
+  /// Shared client for health polling: `http.get` allocates and closes a
+  /// client per call, which is wasteful during the spawn wait window.
+  static final http.Client _defaultHttp = http.Client();
+
   /// The stored endpoint is only trusted when its token authenticates as the
   /// local-mode account — not merely when some server answers on that port.
   static Future<bool> _defaultVerify(LocalServerEndpoint ep) async {
     try {
-      final resp = await http
+      final resp = await _defaultHttp
           .get(
             Uri.parse('${ep.baseUrl}/api/auth/me'),
             headers: {'authorization': 'Bearer ${ep.token}'},
@@ -550,7 +554,9 @@ class LocalServerManager implements LocalServerController {
 
   static Future<bool> _defaultHealthCheck(Uri url) async {
     try {
-      final resp = await http.get(url).timeout(const Duration(seconds: 2));
+      final resp = await _defaultHttp
+          .get(url)
+          .timeout(const Duration(seconds: 2));
       if (resp.statusCode != 200) return false;
       // A stolen port could answer 200 for anything; the devinorium health
       // endpoint has a distinctive body.

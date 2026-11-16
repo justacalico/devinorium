@@ -173,13 +173,20 @@ class NotificationService {
         ]).catchError((_) => ProcessResult(-1, 0, '', ''));
       } else if (Platform.isMacOS) {
         // Thread titles are model-generated text; escape before embedding
-        // them in the AppleScript string literals.
+        // them in the AppleScript string literals. Newlines end the literal
+        // and break the script, so flatten them.
         final escapedTitle = title
             .replaceAll('\\', '\\\\')
-            .replaceAll('"', '\\"');
+            .replaceAll('"', '\\"')
+            .replaceAll('\r\n', ' ')
+            .replaceAll('\n', ' ')
+            .replaceAll('\r', ' ');
         final escapedBody = body
             .replaceAll('\\', '\\\\')
-            .replaceAll('"', '\\"');
+            .replaceAll('"', '\\"')
+            .replaceAll('\r\n', ' ')
+            .replaceAll('\n', ' ')
+            .replaceAll('\r', ' ');
         final script =
             'display notification "$escapedBody" with title "Devinorium" subtitle "$escapedTitle"';
         Process.run('osascript', [

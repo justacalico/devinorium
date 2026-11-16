@@ -116,13 +116,19 @@ class EditorLauncherService implements EditorLauncher {
 
   Future<bool> _launch(String command, List<String> args) async {
     try {
-      // Windows .cmd/.bat shims are not directly executable: route them
-      // through cmd.exe like Node's `shell: true` spawn.
+      // Windows .cmd/.bat shims are not directly executable: run them via
+      // `cmd.exe /c` with each piece as a separate argument. runInShell
+      // joins args unquoted, so a path containing `&` or `|` would run as a
+      // command; quoted this way, cmd.exe leaves them literal.
       final lower = command.toLowerCase();
       final needsShell =
           _operatingSystem == 'windows' &&
           (lower.endsWith('.cmd') || lower.endsWith('.bat'));
-      await _spawn(command, args, runInShell: needsShell);
+      if (needsShell) {
+        await _spawn('cmd.exe', ['/c', command, ...args]);
+      } else {
+        await _spawn(command, args);
+      }
       return true;
     } catch (e) {
       debugLogFailure('editorLauncher.launch', '$command $args: $e');

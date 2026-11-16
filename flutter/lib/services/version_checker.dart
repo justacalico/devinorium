@@ -28,6 +28,7 @@ class VersionChecker {
 
   http.Client? _client;
   final bool _ownsClient;
+  bool _closed = false;
 
   VersionChecker({http.Client? client})
       : _client = client,
@@ -68,6 +69,7 @@ class VersionChecker {
 
   /// Closes the underlying HTTP client if this checker created it.
   void close() {
+    _closed = true;
     if (_ownsClient) {
       _client?.close();
       _client = null;
@@ -91,6 +93,9 @@ class VersionChecker {
       );
 
       try {
+        // A close() between pages must not let the loop recreate a client
+        // that nothing will ever close.
+        if (_closed) return null;
         final client = _client ??= http.Client();
         final response = await client
             .get(uri, headers: {'Accept': 'application/json'})

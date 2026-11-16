@@ -197,19 +197,22 @@ mixin AuthStore on AppStateBase {
         notifyListeners();
         return prompt;
       }
+      // Web auth rides the HttpOnly session cookie; ApiClient.setToken is a
+      // no-op here, so the bearer token is never used. Keep it out of the
+      // profile entirely so it cannot end up in localStorage.
       final active = multiServerState.activeProfile;
       final updated = active != null
           ? active.copyWith(
               username: res.username.isNotEmpty
                   ? res.username
                   : username.trim(),
-              token: res.token,
+              token: '',
             )
           : ServerProfile(
               id: 'web',
               label: 'web',
               baseUrl: '',
-              token: res.token,
+              token: '',
               username: res.username.isNotEmpty
                   ? res.username
                   : username.trim(),
@@ -242,12 +245,17 @@ mixin AuthStore on AppStateBase {
     String? totp,
   }) async {
     final trimmedUrl = serverUrl.trim();
-    final loginApi = _loginApiFor(trimmedUrl);
-    final res = await loginApi.login(
-      username: username,
-      password: password,
-      totp: totp,
-    );
+    final login = _loginApiFor(trimmedUrl);
+    late final LoginResponse res;
+    try {
+      res = await login.api.login(
+        username: username,
+        password: password,
+        totp: totp,
+      );
+    } finally {
+      if (login.owned) login.api.dispose();
+    }
     if (res.totpRequired) return null;
     await _configureLoginClient(
       trimmedUrl,
@@ -265,7 +273,7 @@ mixin AuthStore on AppStateBase {
     );
   }
 
-  ApiService _loginApiFor(String serverUrl) {
+  ({ApiService api, bool owned}) _loginApiFor(String serverUrl) {
     if (_isRealNativeClient(hubApi.client)) {
       final tempProfile = ServerProfile(
         id: ServerProfile.generateId(),
@@ -276,9 +284,9 @@ mixin AuthStore on AppStateBase {
         createdAt: DateTime.now().toUtc(),
         isPrimary: true,
       );
-      return ApiService(client: createApiClient(tempProfile));
+      return (api: ApiService(client: createApiClient(tempProfile)), owned: true);
     }
-    return hubApi;
+    return (api: hubApi, owned: false);
   }
 
   Future<void> _configureLoginClient(
@@ -502,6 +510,11 @@ mixin AuthStore on AppStateBase {
     // when this call set it so the in-flight teardown keeps its lock.
     final ownsSwitchLock = !_switchingServer;
     if (ownsSwitchLock) _switchingServer = true;
+    // Snapshot the account to sign out before the awaits below: a switch in
+    // flight can move activeServerId, and reading it later would delete the
+    // profile the user just switched to.
+    final logoutServerId = multiServerState.activeServerId;
+    final logoutIsLocal = multiServerState.activeProfile?.isLocal ?? false;
     try {
       stopHealthChecks();
       stopGitRefresh();
@@ -523,8 +536,8 @@ mixin AuthStore on AppStateBase {
       // connection is left behind. On web the implicit same-origin profile is
       // kept since it is recreated from the registry anyway. The bundled local
       // profile is kept too: it has no credentials to sign out of.
-      final activeId = multiServerState.activeServerId;
-      final isLocal = multiServerState.activeProfile?.isLocal ?? false;
+      final activeId = logoutServerId;
+      final isLocal = logoutIsLocal;
       if (!kIsWeb && activeId != null && !isLocal) {
         await _removeServerImpl(activeId, discardDirtyTabs: true);
       } else if (isLocal) {
@@ -621,7 +634,10 @@ mixin AuthStore on AppStateBase {
     String serverId, {
     bool discardDirtyTabs = false,
   }) async {
-    _switchingServer = true;
+    // A forced logout can call this while a switch owns the flag; only
+    // release it in the finally when this call took it.
+    final ownsSwitchLock = !_switchingServer;
+    if (ownsSwitchLock) _switchingServer = true;
     try {
       final wasActive = multiServerState.activeServerId == serverId;
       if (wasActive) {
@@ -668,7 +684,7 @@ mixin AuthStore on AppStateBase {
       startGitRefresh();
       notifyListeners();
     } finally {
-      _switchingServer = false;
+      if (ownsSwitchLock) _switchingServer = false;
     }
   }
 

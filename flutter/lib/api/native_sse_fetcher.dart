@@ -9,8 +9,10 @@ import '../models/models.dart';
 import 'api_types.dart';
 import 'sse_parser.dart';
 
+const _maxEventBytes = 4 * 1024 * 1024;
+
 Stream<SseEvent> nativeSseStream({
-  required http.Client client,
+  required http.Client Function() clientFactory,
   required String baseUrl,
   required String token,
   required String path,
@@ -45,20 +47,27 @@ Stream<SseEvent> nativeSseStream({
   }
   req.headers['Authorization'] = 'Bearer $token';
 
+  // Created on first listen so the config checks above can fail without
+  // leaking one, and so an unlistened stream fires no request at all.
+  http.Client? client;
   var clientClosed = false;
   void closeClient() {
     if (clientClosed) return;
     clientClosed = true;
     try {
-      client.close();
+      client?.close();
     } catch (_) {}
   }
 
-  final controller = StreamController<SseEvent>(
+  late final StreamController<SseEvent> controller;
+  controller = StreamController<SseEvent>(
+    onListen: () {
+      client = clientFactory();
+      _run(client!, req, controller, onDone: closeClient);
+    },
     onCancel: closeClient,
   );
 
-  _run(client, req, controller, onDone: closeClient);
   return controller.stream;
 }
 
@@ -99,6 +108,11 @@ Future<void> _run(
         if (event != null && !controller.isClosed) {
           controller.add(event);
         }
+      }
+      // Only the unterminated tail counts toward the cap: a chunk can carry
+      // many complete events.
+      if (buffer.length > _maxEventBytes) {
+        throw ApiException('SSE event exceeded ${_maxEventBytes}B', 0);
       }
     }
 

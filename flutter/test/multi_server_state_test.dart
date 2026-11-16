@@ -16,6 +16,23 @@ http.Response _json(int status, Object body) => http.Response(
       headers: {'content-type': 'application/json'},
     );
 
+class _CloseCountingClient extends http.BaseClient {
+  _CloseCountingClient(this._inner, this._onClose);
+
+  final http.Client _inner;
+  final void Function() _onClose;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      _inner.send(request);
+
+  @override
+  void close() {
+    _onClose();
+    _inner.close();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -128,6 +145,32 @@ void main() {
       await state.removeServer('x');
       expect(state.hasAnyServer, isFalse);
       expect(state.activeApi, isNull);
+    });
+
+    test('loadFromRegistry disposes services from a previous load', () async {
+      final registry = await freshRegistry();
+      final state = MultiServerState(registry: registry);
+      var closed = 0;
+      final spy = _CloseCountingClient(
+        MockClient((req) async => _json(200, {})),
+        () => closed += 1,
+      );
+      final profile = ServerProfile(
+        id: 'x',
+        label: 'x',
+        baseUrl: 'http://x',
+        token: 't',
+        username: 'u',
+        createdAt: DateTime(2024, 1, 1).toUtc(),
+        isPrimary: true,
+      );
+      await state.addProfile(
+        profile,
+        api: ApiService(client: ApiClient.withClient(spy)),
+      );
+
+      await state.loadFromRegistry();
+      expect(closed, 1);
     });
 
     test('removeServer promotes the remaining server to primary', () async {
