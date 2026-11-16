@@ -107,8 +107,9 @@ mixin FilesPanelStore on AppStateBase {
   void _captureFilesScope() {
     _filesScopeKey = activeFilesScopeKey;
     _filesScopeProjectId = _activeProjectId;
-    _filesScopeThreadId =
-        _filesScopeKey?.startsWith('worktree:') == true ? _activeThreadId : null;
+    _filesScopeThreadId = _filesScopeKey?.startsWith('worktree:') == true
+        ? _activeThreadId
+        : null;
   }
 
   @override
@@ -198,6 +199,7 @@ mixin FilesPanelStore on AppStateBase {
     if (target.isLoading || target.isLoadingMore || !target.hasMore) return;
     target.isLoadingMore = true;
     notifyListeners();
+    final gen = _serverSeq;
     try {
       final chunk = await api.listFiles(
         path: target.fullPathString.isEmpty
@@ -208,6 +210,7 @@ mixin FilesPanelStore on AppStateBase {
         limit: _fileChunkSize,
         offset: target.offset,
       );
+      if (gen != _serverSeq) return;
       final existing = <String>{
         for (final child in target.children) child.name,
       };
@@ -220,6 +223,7 @@ mixin FilesPanelStore on AppStateBase {
       target.hasMore = chunk.length == _fileChunkSize;
       _bumpFilesTreeVersion();
     } catch (e) {
+      if (gen != _serverSeq) return;
       target.error = '$e';
       target.hasMore = false;
       if (target == _filesTreeRoot) _filesError = '$e';
@@ -233,8 +237,9 @@ mixin FilesPanelStore on AppStateBase {
   @visibleForTesting
   void setFilesEntries(List<DirEntry> entries) {
     _filesTreeRoot = FileTreeNode.root()
-      ..children =
-          entries.map((e) => FileTreeNode(path: const [], entry: e)).toList()
+      ..children = entries
+          .map((e) => FileTreeNode(path: const [], entry: e))
+          .toList()
       ..offset = entries.length
       ..hasMore = false;
     _captureFilesScope();
@@ -247,16 +252,19 @@ mixin FilesPanelStore on AppStateBase {
   Future<void> mkdir(String name) async {
     if (_filesScopeProjectId == null) return;
     final full = name.trim();
+    final gen = _serverSeq;
     try {
       await api.mkdir(
         filesScopedPath(full),
         projectId: _filesScopeProjectId,
         threadId: filesApiThreadId,
       );
+      if (gen != _serverSeq) return;
       _filesError = '';
       notifyListeners();
       await _refreshParentForPath(full);
     } catch (e) {
+      if (gen != _serverSeq) return;
       _filesError = '$e';
       notifyListeners();
     }
@@ -266,12 +274,14 @@ mixin FilesPanelStore on AppStateBase {
   Future<void> deleteFile(String path) async {
     if (_filesScopeProjectId == null) return;
     final scoped = filesScopedPath(path);
+    final gen = _serverSeq;
     try {
       await api.deleteFile(
         scoped,
         projectId: _filesScopeProjectId,
         threadId: filesApiThreadId,
       );
+      if (gen != _serverSeq) return;
       for (final tab in editorTabs.toList().reversed) {
         if (tab.path == scoped || tab.path.startsWith('$scoped/')) {
           closeEditorTab(tab.path);
@@ -281,6 +291,7 @@ mixin FilesPanelStore on AppStateBase {
       notifyListeners();
       await _refreshParentForPath(path);
     } catch (e) {
+      if (gen != _serverSeq) return;
       _filesError = '$e';
       notifyListeners();
     }
@@ -305,6 +316,7 @@ mixin FilesPanelStore on AppStateBase {
     final scopeProject = _filesScopeProjectId;
     _bumpFilesTreeVersion();
     notifyListeners();
+    final gen = _serverSeq;
     try {
       final chunk = await api.listFiles(
         path: node.fullPathString.isEmpty
@@ -315,6 +327,7 @@ mixin FilesPanelStore on AppStateBase {
         limit: _fileChunkSize,
         offset: 0,
       );
+      if (gen != _serverSeq) return;
       node.children = chunk
           .map((e) => FileTreeNode(path: node.fullPath, entry: e))
           .toList();
@@ -326,6 +339,7 @@ mixin FilesPanelStore on AppStateBase {
         _filesScopeProjectId = scopeProject;
       }
     } catch (e) {
+      if (gen != _serverSeq) return;
       node.error = '$e';
       node.hasMore = false;
     }

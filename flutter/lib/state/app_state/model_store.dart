@@ -53,6 +53,7 @@ mixin ModelStore on AppStateBase {
   /// so the row stays unchanged rather than flashing to an unknown state.
   @override
   Future<void> refreshProviderVersion({String? providerId}) async {
+    final gen = _serverSeq;
     final ids = providerId != null && providerId.isNotEmpty
         ? [providerId]
         : [for (final p in _providers) p.id];
@@ -61,6 +62,7 @@ mixin ModelStore on AppStateBase {
       // endpoint reports the user's configured provider.
       try {
         final v = await api.providerVersion();
+        if (gen != _serverSeq) return;
         if (v.providerId.isNotEmpty) {
           _providerVersions[v.providerId] = v;
           notifyListeners();
@@ -68,13 +70,16 @@ mixin ModelStore on AppStateBase {
       } catch (_) {}
       return;
     }
+    final found = <String, ProviderVersion>{};
     await Future.wait(
       ids.map((id) async {
         try {
-          _providerVersions[id] = await api.providerVersion(provider: id);
+          found[id] = await api.providerVersion(provider: id);
         } catch (_) {}
       }),
     );
+    if (gen != _serverSeq) return;
+    _providerVersions.addAll(found);
     notifyListeners();
   }
 

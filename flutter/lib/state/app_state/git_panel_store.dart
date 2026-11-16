@@ -574,16 +574,20 @@ mixin GitPanelStore on AppStateBase {
     _gitActionBusy = true;
     _gitPanelError = '';
     notifyListeners();
+    final gen = _serverSeq;
     try {
       await call(projectId, gitApiThreadId);
+      if (gen != _serverSeq) return false;
       await _afterGitMutation();
       return true;
     } catch (e) {
-      _gitPanelError = '$e';
+      if (gen == _serverSeq) _gitPanelError = '$e';
       return false;
     } finally {
-      _gitActionBusy = false;
-      notifyListeners();
+      if (gen == _serverSeq) {
+        _gitActionBusy = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -602,8 +606,9 @@ mixin GitPanelStore on AppStateBase {
       _runGitAction((pid, tid) => api.gitStage(pid, all: true, threadId: tid));
 
   @override
-  Future<bool> gitUnstageAll() =>
-      _runGitAction((pid, tid) => api.gitUnstage(pid, all: true, threadId: tid));
+  Future<bool> gitUnstageAll() => _runGitAction(
+    (pid, tid) => api.gitUnstage(pid, all: true, threadId: tid),
+  );
 
   /// Commit staged changes, or stage everything first when the index is
   /// empty (the same flow "commit all" buttons use).
@@ -613,9 +618,8 @@ mixin GitPanelStore on AppStateBase {
     if (msg.isEmpty) return false;
     final all = _gitPanelChanges?.staged.isEmpty ?? false;
     return _runGitAction(
-      (pid, tid) => api
-          .gitCommit(pid, msg, all: all, threadId: tid)
-          .then((_) {}),
+      (pid, tid) =>
+          api.gitCommit(pid, msg, all: all, threadId: tid).then((_) {}),
     );
   }
 
@@ -643,10 +647,7 @@ mixin GitPanelStore on AppStateBase {
     _gitIssuesError = '';
     notifyListeners();
     try {
-      final remote = await api.gitRemote(
-        projectId,
-        threadId: gitApiThreadId,
-      );
+      final remote = await api.gitRemote(projectId, threadId: gitApiThreadId);
       if (seq != _gitRemoteSeq || _gitPanelScopeKey != scopeKey) return;
       _gitPanelRemote = remote;
       _gitRemoteLoaded = true;
@@ -703,10 +704,7 @@ mixin GitPanelStore on AppStateBase {
     _gitIssuesLoading = true;
     notifyListeners();
     try {
-      final issues = await api.gitIssues(
-        projectId,
-        threadId: gitApiThreadId,
-      );
+      final issues = await api.gitIssues(projectId, threadId: gitApiThreadId);
       if (seq != _gitRemoteSeq || _gitPanelScopeKey != scopeKey) return;
       _gitIssues = issues;
       _gitIssuesError = '';

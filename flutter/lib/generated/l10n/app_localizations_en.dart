@@ -2184,6 +2184,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'Editor has unsaved changes. Save or discard them before deleting this project.';
 
   @override
+  String get editorUnsavedSignOut =>
+      'Editor has unsaved changes. Save or discard them before signing out.';
+
+  @override
+  String get editorUnsavedRemoveServer =>
+      'Editor has unsaved changes. Save or discard them before removing this server.';
+
+  @override
   String get editorUnsavedSwitch =>
       'Editor has unsaved changes. Save or discard them before switching.';
 

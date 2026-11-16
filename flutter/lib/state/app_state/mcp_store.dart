@@ -77,8 +77,14 @@ mixin McpStore on AppStateBase {
   /// string on failure.
   @override
   Future<String?> saveWebAccess(bool enabled) async {
+    // Invalidate any in-flight load so its response cannot overwrite the
+    // saved value.
+    _webAccessSeq++;
+    final gen = _serverSeq;
     try {
-      _webAccessEnabled = await api.saveWebAccess(enabled);
+      final saved = await api.saveWebAccess(enabled);
+      if (gen != _serverSeq) return null;
+      _webAccessEnabled = saved;
       notifyListeners();
       return null;
     } on ApiException catch (e) {
@@ -92,8 +98,14 @@ mixin McpStore on AppStateBase {
   /// this write. Returns an error string on failure.
   @override
   Future<String?> saveMcpServers(List<McpServerConfig> servers) async {
+    // Invalidate any in-flight load so its response cannot overwrite the
+    // saved list.
+    _mcpSeq++;
+    final gen = _serverSeq;
     try {
-      _mcpServers = await api.saveMcpServers(servers);
+      final saved = await api.saveMcpServers(servers);
+      if (gen != _serverSeq) return null;
+      _mcpServers = saved;
       notifyListeners();
       return null;
     } on ApiException catch (e) {
@@ -111,12 +123,18 @@ mixin McpStore on AppStateBase {
     Uint8List bytes,
     Map<String, dynamic> config,
   ) async {
+    // Invalidate any in-flight load so its response cannot overwrite the
+    // installed list.
+    _mcpSeq++;
+    final gen = _serverSeq;
     try {
-      _mcpServers = await api.installMcpb(
+      final saved = await api.installMcpb(
         filename: filename,
         bytes: bytes,
         config: config,
       );
+      if (gen != _serverSeq) return null;
+      _mcpServers = saved;
       notifyListeners();
       return null;
     } on ApiException catch (e) {

@@ -386,13 +386,17 @@ mixin AuthStore on AppStateBase {
 
   @override
   Future<void> loadUsers() async {
+    final gen = _serverSeq;
     try {
       // Account management is a hub concern: satellites only have the
       // passwordless `local` owner, so listing them via the node-bound api
       // would show the wrong user table.
-      _users = await hubApi.listUsers();
+      final users = await hubApi.listUsers();
+      if (gen != _serverSeq) return;
+      _users = users;
       _globalError = '';
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
     }
     notifyListeners();
@@ -425,11 +429,14 @@ mixin AuthStore on AppStateBase {
     required String username,
     required String password,
   }) async {
+    final gen = _serverSeq;
     try {
       await hubApi.createUser(username: username, password: password);
+      if (gen != _serverSeq) return;
       _globalError = '';
       await loadUsers();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -437,11 +444,14 @@ mixin AuthStore on AppStateBase {
 
   @override
   Future<void> setUserDisabled(int id, bool disabled) async {
+    final gen = _serverSeq;
     try {
       await hubApi.setUserDisabled(id, disabled);
+      if (gen != _serverSeq) return;
       _globalError = '';
       await loadUsers();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -460,7 +470,7 @@ mixin AuthStore on AppStateBase {
     } catch (e) {
       return '$e';
     }
-    await logout();
+    await logout(force: true);
     return null;
   }
 
@@ -477,46 +487,62 @@ mixin AuthStore on AppStateBase {
   }
 
   @override
-  Future<void> logout() async {
-    stopHealthChecks();
-    stopGitRefresh();
-    for (final store in _threadStores.values) {
-      store.dispose();
+  Future<void> logout({bool force = false}) async {
+    // A switch or removal is already tearing the connection down; forcing
+    // still proceeds because a revoked session must finish signing out.
+    if (_switchingServer && !force) return;
+    if (!force && hasDirtyEditorTabs) {
+      _globalError = appL10n.editorUnsavedSignOut;
+      notifyListeners();
+      return;
     }
-    _threadStores.clear();
-    _setActiveStore(null);
-    // Kill terminals while the old connection is still authenticated —
-    // after logout/server removal the kills would be rejected. Same for
-    // the push subscription: the logged-out browser should not keep
-    // receiving this account's notifications.
-    await terminalStore.clear();
-    await _teardownPushSubscription();
+    // A forced logout may run while a switch owns the flag; only clear it
+    // when this call set it so the in-flight teardown keeps its lock.
+    final ownsSwitchLock = !_switchingServer;
+    if (ownsSwitchLock) _switchingServer = true;
     try {
-      await hubApi.logout();
-    } catch (_) {}
-    // Sign-out removes the server profile so no stale unauthenticated
-    // connection is left behind. On web the implicit same-origin profile is
-    // kept since it is recreated from the registry anyway. The bundled local
-    // profile is kept too: it has no credentials to sign out of.
-    final activeId = multiServerState.activeServerId;
-    final isLocal = multiServerState.activeProfile?.isLocal ?? false;
-    if (!kIsWeb && activeId != null && !isLocal) {
-      await removeServer(activeId);
-    } else if (isLocal) {
-      // Nothing to sign out of; just drop the in-memory state and reload.
-      await _resetServerState();
-      await _loadUserAndData();
-    } else {
-      await multiServerState.clearActiveToken();
-      await _resetServerState();
-      if (kIsWeb) {
-        _dialog = DialogKind.webLogin;
+      stopHealthChecks();
+      stopGitRefresh();
+      for (final store in _threadStores.values) {
+        store.dispose();
       }
+      _threadStores.clear();
+      _setActiveStore(null);
+      // Kill terminals while the old connection is still authenticated —
+      // after logout/server removal the kills would be rejected. Same for
+      // the push subscription: the logged-out browser should not keep
+      // receiving this account's notifications.
+      await terminalStore.clear();
+      await _teardownPushSubscription();
+      try {
+        await hubApi.logout();
+      } catch (_) {}
+      // Sign-out removes the server profile so no stale unauthenticated
+      // connection is left behind. On web the implicit same-origin profile is
+      // kept since it is recreated from the registry anyway. The bundled local
+      // profile is kept too: it has no credentials to sign out of.
+      final activeId = multiServerState.activeServerId;
+      final isLocal = multiServerState.activeProfile?.isLocal ?? false;
+      if (!kIsWeb && activeId != null && !isLocal) {
+        await _removeServerImpl(activeId, discardDirtyTabs: true);
+      } else if (isLocal) {
+        // Nothing to sign out of; just drop the in-memory state and reload.
+        await _resetServerState();
+        await _loadUserAndData();
+      } else {
+        await multiServerState.clearActiveToken();
+        await _resetServerState();
+        if (kIsWeb) {
+          _dialog = DialogKind.webLogin;
+        }
+      }
+      _settingsTopicIndex = 0;
+      _userMenuOpen = false;
+      _view = AppView.app;
+      notifyListeners();
+    } finally {
+      if (ownsSwitchLock) _switchingServer = false;
     }
-    _settingsTopicIndex = 0;
-    _userMenuOpen = false;
-    _view = AppView.app;
-    notifyListeners();
   }
 
   @override
@@ -531,12 +557,27 @@ mixin AuthStore on AppStateBase {
     stopHealthChecks();
     stopGitRefresh();
     try {
+      if (hasDirtyEditorTabs) {
+        _globalError = appL10n.editorUnsavedSwitch;
+        startHealthChecks();
+        startGitRefresh();
+        notifyListeners();
+        return;
+      }
       // Terminals belong to the current server — kill them before the
       // active connection changes underneath us. Same for the push
       // subscription: it must be removed while the old server is still
       // authenticated, or it keeps pushing this account's events.
       await terminalStore.clear();
       await _teardownPushSubscription();
+      if (hasDirtyEditorTabs) {
+        _globalError = appL10n.editorUnsavedSwitch;
+        startHealthChecks();
+        startGitRefresh();
+        unawaited(_syncPushSubscription());
+        notifyListeners();
+        return;
+      }
       final ok = await multiServerState.setActiveServer(serverId);
       if (!ok) throw StateError('server not found');
       // The bundled server may have died while a remote profile was active;
@@ -554,6 +595,7 @@ mixin AuthStore on AppStateBase {
       // Keep retrying every server, not just the bundled one: a dead remote
       // must come back on its own once it answers the probe again.
       startHealthChecks();
+      startGitRefresh();
       notifyListeners();
     } finally {
       _switchingServer = false;
@@ -565,14 +607,41 @@ mixin AuthStore on AppStateBase {
     if (_switchingServer) return;
     // The bundled profile refuses removal; nothing to tear down.
     if (multiServerState.profileById(serverId)?.isLocal == true) return;
+    if (multiServerState.activeServerId == serverId && hasDirtyEditorTabs) {
+      _globalError = appL10n.editorUnsavedRemoveServer;
+      notifyListeners();
+      return;
+    }
+    await _removeServerImpl(serverId);
+  }
+
+  Future<void> _removeServerImpl(
+    String serverId, {
+    bool discardDirtyTabs = false,
+  }) async {
     _switchingServer = true;
     try {
       final wasActive = multiServerState.activeServerId == serverId;
       if (wasActive) {
         stopHealthChecks();
         stopGitRefresh();
+        if (!discardDirtyTabs && hasDirtyEditorTabs) {
+          _globalError = appL10n.editorUnsavedRemoveServer;
+          startHealthChecks();
+          startGitRefresh();
+          notifyListeners();
+          return;
+        }
         await terminalStore.clear();
         await _teardownPushSubscription();
+        if (!discardDirtyTabs && hasDirtyEditorTabs) {
+          _globalError = appL10n.editorUnsavedRemoveServer;
+          startHealthChecks();
+          startGitRefresh();
+          unawaited(_syncPushSubscription());
+          notifyListeners();
+          return;
+        }
       }
       await multiServerState.removeServer(serverId);
       if (wasActive) {
@@ -594,6 +663,7 @@ mixin AuthStore on AppStateBase {
     } catch (e) {
       _globalError = '$e';
       startHealthChecks();
+      startGitRefresh();
       notifyListeners();
     } finally {
       _switchingServer = false;
@@ -608,17 +678,20 @@ mixin AuthStore on AppStateBase {
   }) async {
     final user = _user;
     if (user == null) return;
+    final gen = _serverSeq;
     try {
       // Provider commands are owner-only; non-owners omit them so a
       // provider switch is not rejected.
       final commands = user.isOwner;
-      _user = await api.updateMe(
+      final updated = await api.updateMe(
         providerId: providerId ?? user.providerId,
         providerCommand: commands
             ? (providerCommand ?? user.providerCommand)
             : null,
         providerCommands: commands ? providerCommands : null,
       );
+      if (gen != _serverSeq) return;
+      _user = updated;
       if (providerId != null && providerId != user.providerId) {
         // The global composer selection followed the old default provider;
         // reset it so new threads start on the new provider's catalog.
@@ -626,11 +699,10 @@ mixin AuthStore on AppStateBase {
         _selectedModel = '';
         _modelsProvider = '';
         _modelsNode = '';
-        _modelsNode = '';
         _models = [];
         await _saveSelectedProvider('');
         await _saveSelectedModel('');
-        await ensureModelsFor(_user!.providerId);
+        await ensureModelsFor(updated.providerId);
       }
       _globalError = '';
       // The installed version and the availability probe both depend on the
@@ -645,6 +717,7 @@ mixin AuthStore on AppStateBase {
       }
       unawaited(_refreshProviders());
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
     }
     notifyListeners();
@@ -681,16 +754,20 @@ mixin AuthStore on AppStateBase {
     required String providerId,
     required String command,
   }) async {
+    final gen = _serverSeq;
     try {
       await api.testProvider(providerId: providerId, command: command);
+      if (gen != _serverSeq) return;
       _globalError = '';
       // A passing health check means the binary answers; refresh the
       // availability flags without waiting for the server-side TTL.
       unawaited(_refreshProviders());
       notifyListeners();
     } catch (e) {
-      _globalError = '$e';
-      notifyListeners();
+      if (gen == _serverSeq) {
+        _globalError = '$e';
+        notifyListeners();
+      }
       rethrow;
     }
   }
@@ -707,17 +784,20 @@ mixin AuthStore on AppStateBase {
 
   @override
   Future<void> openTotpSetup(String proof) async {
+    final gen = _serverSeq;
     try {
       // TOTP guards the hub login, not the satellite's `local` account.
       final res = await hubApi.totpSetup(
         password: _totpProof(proof).password,
         code: _totpProof(proof).code,
       );
+      if (gen != _serverSeq) return;
       _totpSecret = res.secret;
       _dialog = DialogKind.totpSetup;
       _userMenuOpen = false;
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -725,13 +805,16 @@ mixin AuthStore on AppStateBase {
 
   @override
   Future<void> verifyTotp(String code) async {
+    final gen = _serverSeq;
     try {
       await hubApi.totpVerify(code);
+      if (gen != _serverSeq) return;
       _dialog = DialogKind.none;
       _user = await api.me();
       _globalError = '';
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -739,15 +822,18 @@ mixin AuthStore on AppStateBase {
 
   @override
   Future<void> disableTotp(String proof) async {
+    final gen = _serverSeq;
     try {
       await hubApi.totpDisable(
         password: _totpProof(proof).password,
         code: _totpProof(proof).code,
       );
+      if (gen != _serverSeq) return;
       _user = await api.me();
       _globalError = '';
       notifyListeners();
     } catch (e) {
+      if (gen != _serverSeq) return;
       _globalError = '$e';
       notifyListeners();
     }
@@ -860,6 +946,23 @@ mixin AuthStore on AppStateBase {
     _gitBranches.clear();
     _gitWorktrees.clear();
     _gitConnections = [];
+    _bumpGitConnections();
+    _cloneRoot = null;
+    _worktreeRoot = null;
+    _projectRoot = null;
+    _cloneRepoSeq++;
+    _cloningRepo = false;
+    _cloneRepoResult = null;
+    _loadingGitConnections = false;
+    _loadingCloneRoot = false;
+    _loadingWorktreeRoot = false;
+    _loadingProjectRoot = false;
+    _totpSecret = '';
+    _skills = [];
+    _skillsThreadId = null;
+    _skillsSeq++;
+    _threadRunStatuses.clear();
+    _threadRunAttention.clear();
     _tailscaleInfo = null;
     _tailscaleBusy = false;
     // Invalidate in-flight status loads so a slow response from the old

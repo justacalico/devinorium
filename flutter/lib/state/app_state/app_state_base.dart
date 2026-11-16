@@ -304,6 +304,7 @@ abstract class AppStateBase extends ChangeNotifier {
   set _renameInitialName(String value);
   List<GitConnection> get _gitConnections;
   set _gitConnections(List<GitConnection> value);
+  void _bumpGitConnections();
   bool get _loadingGitConnections;
   set _loadingGitConnections(bool value);
   String? get _cloneRoot;
@@ -683,7 +684,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> setUserDisabled(int id, bool disabled);
   Future<String?> changePassword(String current, String newPassword);
   Future<String?> resetUserPassword(int id, String password);
-  Future<void> logout();
+  Future<void> logout({bool force = false});
   Future<void> selectProject(int id);
   Future<void> selectAllProjects();
   Future<void> createProject({

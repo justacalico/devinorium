@@ -165,11 +165,13 @@ mixin EditorStore on AppStateBase {
       _activeEditorPath = path;
       notifyListeners();
 
+      final gen = _serverSeq;
       try {
         final content = await api.readFile(
           path: path,
           projectId: p.isAbsolute(path) ? null : tab.projectId,
         );
+        if (gen != _serverSeq) return;
         final idx = _editorTabs.indexWhere((t) => t.path == path);
         if (idx < 0) return;
         final text = content.text ?? '';
@@ -183,6 +185,7 @@ mixin EditorStore on AppStateBase {
         _bumpEditorTabs();
         notifyListeners();
       } catch (e) {
+        if (gen != _serverSeq) return;
         final idx = _editorTabs.indexWhere((t) => t.path == path);
         if (idx >= 0) {
           _editorTabs[idx] = _editorTabs[idx].copyWith(
@@ -312,6 +315,7 @@ mixin EditorStore on AppStateBase {
       // it was closed or reordered while the network call was in flight.
       final textToSave = _editorTabs[idx].text;
       final expectedSha = _editorTabs[idx].content!.sha256;
+      final gen = _serverSeq;
 
       try {
         final content = await api.writeFile(
@@ -320,6 +324,7 @@ mixin EditorStore on AppStateBase {
           content: textToSave,
           expectedSha256: expectedSha,
         );
+        if (gen != _serverSeq) return;
         final newIdx = _editorTabs.indexWhere((t) => t.path == path);
         if (newIdx < 0) return;
         _editorTabs[newIdx] = _editorTabs[newIdx].copyWith(
@@ -332,6 +337,7 @@ mixin EditorStore on AppStateBase {
         _bumpEditorTabs();
         notifyListeners();
       } on FileConflictException catch (e) {
+        if (gen != _serverSeq) return;
         final newIdx = _editorTabs.indexWhere((t) => t.path == path);
         if (newIdx < 0) return;
         _editorTabs[newIdx] = _editorTabs[newIdx].copyWith(
@@ -342,6 +348,7 @@ mixin EditorStore on AppStateBase {
         _bumpEditorTabs();
         notifyListeners();
       } catch (e) {
+        if (gen != _serverSeq) return;
         final newIdx = _editorTabs.indexWhere((t) => t.path == path);
         if (newIdx < 0) return;
         _editorTabs[newIdx] = _editorTabs[newIdx].copyWith(
@@ -368,11 +375,13 @@ mixin EditorStore on AppStateBase {
       _bumpEditorTabs();
       notifyListeners();
 
+      final gen = _serverSeq;
       try {
         final content = await api.readFile(
           path: path,
           projectId: p.isAbsolute(path) ? null : tab.projectId,
         );
+        if (gen != _serverSeq) return;
         final newIdx = _editorTabs.indexWhere((t) => t.path == path);
         if (newIdx < 0) return;
         final current = _editorTabs[newIdx];
@@ -389,6 +398,7 @@ mixin EditorStore on AppStateBase {
         _bumpEditorTabs();
         notifyListeners();
       } catch (e) {
+        if (gen != _serverSeq) return;
         final newIdx = _editorTabs.indexWhere((t) => t.path == path);
         if (newIdx < 0) return;
         _editorTabs[newIdx] = _editorTabs[newIdx].copyWith(

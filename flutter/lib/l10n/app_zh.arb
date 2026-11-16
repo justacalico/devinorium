@@ -1585,6 +1585,14 @@
   "@editorUnsavedDeleteProject": {
     "description": "Error shown when deleting a project while the editor has unsaved changes"
   },
+  "editorUnsavedSignOut": "编辑器有未保存的更改。请先保存或放弃更改，然后再退出登录。",
+  "@editorUnsavedSignOut": {
+    "description": "Error shown when signing out while the editor has unsaved changes"
+  },
+  "editorUnsavedRemoveServer": "编辑器有未保存的更改。请先保存或放弃更改，然后再移除此服务器。",
+  "@editorUnsavedRemoveServer": {
+    "description": "Error shown when removing the active server while the editor has unsaved changes"
+  },
   "editorUnsavedSwitch": "编辑器有未保存的更改。请先保存或放弃更改，然后再切换。",
   "@editorUnsavedSwitch": {
     "description": "Error shown when switching servers or nodes while the editor has unsaved changes"
