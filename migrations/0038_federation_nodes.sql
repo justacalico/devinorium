@@ -1,4 +1,4 @@
--- Devinorium schema migration 0036 — federation nodes.
+-- Devinorium schema migration 0038 — federation nodes.
 --
 -- Satellite backends that registered with this hub. `id` is the node's own
 -- stable identifier (a UUID it persists in its server_settings), so a
