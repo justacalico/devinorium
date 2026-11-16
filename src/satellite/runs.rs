@@ -106,6 +106,7 @@ async fn run(State(state): State<Arc<SatelliteState>>, Json(req): Json<RunReques
             run_id: run_id.to_string(),
             task: task.abort_handle(),
             pending_ids,
+            cancel,
         },
     };
     Sse::new(stream)
@@ -119,6 +120,10 @@ async fn run(State(state): State<Arc<SatelliteState>>, Json(req): Json<RunReques
 /// emits. Past this point the run is cancelled rather than letting a
 /// drip-fed consumer grow satellite memory without bound.
 const RUN_EVENT_BUFFER_CAP: usize = 1024;
+
+/// How long a permission/ask prompt may wait for the hub's callback. A
+/// callback POST lost to a network blip must not park the provider forever.
+const PENDING_CALLBACK_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// Convert the wire options into provider-facing [`SendOptions`], wiring the
 /// interactive callbacks through the event channel.
@@ -180,6 +185,7 @@ fn send_options(
                 // The hub echoes this id back verbatim in the callback.
                 let request_id = format!("{run_id}/{}", request.request_id);
                 let (otx, orx) = oneshot::channel();
+                let stale = request_id.clone();
                 {
                     let mut pending = state.pending.lock().await;
                     // Same rule as the hub: a repeated id inside one run
@@ -190,9 +196,10 @@ fn send_options(
                     }
                     pending.insert(request_id.clone(), PendingCallback::Permission(otx));
                 }
-                if let Ok(mut ids) = pending_ids.lock() {
-                    ids.push(request_id.clone());
-                }
+                pending_ids
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .push(request_id.clone());
                 if tx
                     .send(NodeEvent::Permission {
                         request_id,
@@ -202,7 +209,13 @@ fn send_options(
                 {
                     return PermissionOutcome::Cancel;
                 }
-                orx.await.unwrap_or(PermissionOutcome::Cancel)
+                match tokio::time::timeout(PENDING_CALLBACK_TTL, orx).await {
+                    Ok(res) => res.unwrap_or(PermissionOutcome::Cancel),
+                    Err(_) => {
+                        state.pending.lock().await.remove(&stale);
+                        PermissionOutcome::Cancel
+                    }
+                }
             })
         })
     };
@@ -220,6 +233,7 @@ fn send_options(
             Box::pin(async move {
                 let request_id = format!("{run_id}/{}", request.request_id);
                 let (otx, orx) = oneshot::channel();
+                let stale = request_id.clone();
                 {
                     let mut pending = state.pending.lock().await;
                     if pending.contains_key(&request_id) {
@@ -227,9 +241,10 @@ fn send_options(
                     }
                     pending.insert(request_id.clone(), PendingCallback::Ask(otx));
                 }
-                if let Ok(mut ids) = pending_ids.lock() {
-                    ids.push(request_id.clone());
-                }
+                pending_ids
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .push(request_id.clone());
                 if tx
                     .send(NodeEvent::Ask {
                         request_id,
@@ -239,7 +254,13 @@ fn send_options(
                 {
                     return AskOutcome::Cancel;
                 }
-                orx.await.unwrap_or(AskOutcome::Cancel)
+                match tokio::time::timeout(PENDING_CALLBACK_TTL, orx).await {
+                    Ok(res) => res.unwrap_or(AskOutcome::Cancel),
+                    Err(_) => {
+                        state.pending.lock().await.remove(&stale);
+                        AskOutcome::Cancel
+                    }
+                }
             })
         })
     };
@@ -463,6 +484,7 @@ struct RunGuard {
     run_id: String,
     task: tokio::task::AbortHandle,
     pending_ids: Arc<StdMutex<Vec<String>>>,
+    cancel: Arc<AtomicBool>,
 }
 
 impl Drop for RunGuard {
@@ -470,11 +492,12 @@ impl Drop for RunGuard {
         let state = self.state.clone();
         let run_id = self.run_id.clone();
         let pending_ids = self.pending_ids.clone();
+        // Flag before abort: providers polling cancel_signal still get the
+        // graceful-stop hint even though the drive future is being dropped.
+        self.cancel.store(true, Ordering::SeqCst);
         self.task.abort();
         tokio::spawn(async move {
-            if let Some(run) = state.runs.lock().await.remove(&run_id) {
-                run.cancel.store(true, Ordering::SeqCst);
-            }
+            state.runs.lock().await.remove(&run_id);
             let ids: Vec<String> = pending_ids
                 .lock()
                 .map(|mut g| std::mem::take(&mut *g))
