@@ -156,5 +156,37 @@ void main() {
       expect(value, 1);
       expect(second, 1);
     });
+
+    test(
+      'stale in-flight completion keeps the newer request in flight',
+      () async {
+        final preloader = Preloader();
+        final c1 = Completer<int>();
+        final c2 = Completer<int>();
+        var calls = 0;
+
+        Future<int> f(Completer<int> c) {
+          calls++;
+          return c.future;
+        }
+
+        final stale = preloader.load<int>('key', () => f(c1));
+        preloader.invalidate('key');
+        final fresh = preloader.load<int>('key', () => f(c2));
+
+        c1.complete(1);
+        await pumpEventQueue();
+
+        // If the stale completion had evicted the fresh entry, this load
+        // would start a third fetch instead of joining the second.
+        final joined = preloader.load<int>('key', () => f(Completer<int>()));
+        c2.complete(2);
+
+        expect(await stale, 1);
+        expect(await fresh, 2);
+        expect(await joined, 2);
+        expect(calls, 2);
+      },
+    );
   });
 }

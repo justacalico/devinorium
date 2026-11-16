@@ -55,18 +55,22 @@ class Preloader {
 
     final stopwatch = Stopwatch()..start();
     late final _InFlightEntry entry;
-    final future = fetch().then((value) {
-      _inFlight.remove(key);
-      final effectiveTtl = ttl ?? _defaultTtl;
-      if (entry.valid && effectiveTtl > Duration.zero) {
-        _cache[key] = _CacheEntry(value, DateTime.now().add(effectiveTtl));
-      }
-      _maybeReport(key, stopwatch.elapsed);
-      return value;
-    }).onError((error, stackTrace) {
-      _inFlight.remove(key);
-      throw error!;
-    });
+    final future = fetch()
+        .then((value) {
+          // A stale future finishing after invalidate() must not evict the
+          // entry a newer call registered for the same key.
+          if (identical(_inFlight[key], entry)) _inFlight.remove(key);
+          final effectiveTtl = ttl ?? _defaultTtl;
+          if (entry.valid && effectiveTtl > Duration.zero) {
+            _cache[key] = _CacheEntry(value, DateTime.now().add(effectiveTtl));
+          }
+          _maybeReport(key, stopwatch.elapsed);
+          return value;
+        })
+        .onError((error, stackTrace) {
+          if (identical(_inFlight[key], entry)) _inFlight.remove(key);
+          Error.throwWithStackTrace(error!, stackTrace);
+        });
 
     entry = _InFlightEntry(future);
     _inFlight[key] = entry;
