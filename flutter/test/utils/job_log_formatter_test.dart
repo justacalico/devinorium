@@ -4,10 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('JobLogFormatter', () {
     test('normalises line endings', () {
-      expect(
-        JobLogFormatter.normalize('a\r\nb\rc'),
-        'a\nb\nc',
-      );
+      expect(JobLogFormatter.normalize('a\r\nb\rc'), 'a\nb\nc');
     });
 
     test('strips SGR ANSI colour codes', () {
@@ -25,10 +22,7 @@ void main() {
     });
 
     test('strips erase-line ANSI codes', () {
-      expect(
-        JobLogFormatter.normalize('line\u{001B}[K'),
-        'line',
-      );
+      expect(JobLogFormatter.normalize('line\u{001B}[K'), 'line');
     });
 
     test('strips private CSI sequences like cursor hide', () {
@@ -50,6 +44,29 @@ void main() {
         JobLogFormatter.normalize('\u{001B}]0;my title\u{001B}\\text'),
         'text',
       );
+    });
+
+    test('strips CSI sequences with private parameter characters', () {
+      expect(
+        JobLogFormatter.normalize('\u{001B}[>4;2mtext\u{001B}[4:3m'),
+        'text',
+      );
+    });
+
+    test('strips an unterminated escape truncated at the end', () {
+      expect(
+        JobLogFormatter.normalize('log line\u{001B}]8;;https://x'),
+        'log line',
+      );
+      expect(JobLogFormatter.normalize('log line\u{001B}[31'), 'log line');
+      expect(JobLogFormatter.normalize('log line\u{001B}'), 'log line');
+    });
+
+    test('strips a truncated CSI that ends on an intermediate byte', () {
+      const text = 'ok[1;38;5;';
+      expect(JobLogFormatter.normalize(text), 'ok');
+      const spaced = 'ok[1;38;5 ';
+      expect(JobLogFormatter.normalize(spaced), 'ok');
     });
 
     test('truncates to the last N characters when maxLength is set', () {
