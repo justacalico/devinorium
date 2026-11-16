@@ -321,10 +321,9 @@ class LinkedMergeRequestRef {
           );
         }
       }
-      return null;
     }
 
-    final mrIdx = segs.indexOf('merge_requests');
+    final mrIdx = segs.lastIndexOf('merge_requests');
     if (mrIdx < 2 || segs[mrIdx - 1] != '-') return null;
     if (mrIdx + 1 >= segs.length) return null;
     final iid = int.tryParse(segs[mrIdx + 1]);
