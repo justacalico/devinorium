@@ -36,7 +36,10 @@ static bool GetEnvVar(const wchar_t* name, std::wstring* out) {
   wchar_t buf[1024];
   SetLastError(ERROR_SUCCESS);
   DWORD len = GetEnvironmentVariableW(name, buf, 1024);
-  if (len == 0) return GetLastError() != ERROR_ENVVAR_NOT_FOUND;
+  if (len == 0) {
+    out->clear();
+    return GetLastError() != ERROR_ENVVAR_NOT_FOUND;
+  }
   if (len >= 1024) return false;
   out->assign(buf, len);
   return true;

@@ -57,6 +57,12 @@ data/
 !.env.example
 *.pem
 *.key
+*.p12
+*.pfx
+*.snk
+id_rsa*
+id_ed25519*
+credentials*.json
 
 # IDE
 .idea/

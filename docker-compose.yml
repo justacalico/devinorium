@@ -9,7 +9,7 @@ services:
       # HTTP only; terminate TLS in a reverse proxy for public exposure.
       - "127.0.0.1:7878:7878"
     volumes:
-      - devinorium-data:/home/devinorium/data
+      - devinorium-data:/home/devinorium
     environment:
       DEVINORIUM_SESSION_KEY: ${DEVINORIUM_SESSION_KEY:?set a random session key}
       DEVINORIUM_BOOTSTRAP_PASSWORD: ${DEVINORIUM_BOOTSTRAP_PASSWORD:?set a bootstrap password}
