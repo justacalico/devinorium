@@ -309,7 +309,7 @@ List<_DiffLine> _extractHunks(List<_DiffLine> raw) {
   var prevKept = false;
   for (var idx = 0; idx < raw.length; idx++) {
     if (keep[idx]) {
-      if (!prevKept && result.isNotEmpty) {
+      if (!prevKept && idx > 0) {
         result.add(const _DiffLine(_LineKind.skip, '…'));
       }
       result.add(raw[idx]);
@@ -317,6 +317,9 @@ List<_DiffLine> _extractHunks(List<_DiffLine> raw) {
     } else {
       prevKept = false;
     }
+  }
+  if (!prevKept) {
+    result.add(const _DiffLine(_LineKind.skip, '…'));
   }
 
   return result;
