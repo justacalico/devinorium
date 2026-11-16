@@ -33,9 +33,18 @@ class _FilesPanelState extends State<FilesPanel> {
   }
 
   void _loadIfNeeded(AppState state) {
-    if (state.filesScopeKey == state.activeFilesScopeKey) return;
     if (state.appMode == AppMode.editor && state.activeThreadId == null) return;
-    unawaited(state.reloadFiles());
+    // The scope key is captured before a load finishes, so a failed or
+    // interrupted fetch looks identical to a fresh mount. Retrying on mount
+    // gives the panel a way out of a dead load without an app restart.
+    final needsReload =
+        state.filesScopeKey != state.activeFilesScopeKey ||
+        state.filesTreeRoot.error.isNotEmpty;
+    if (needsReload) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(state.reloadFiles());
+      });
+    }
   }
 
   @override
@@ -183,9 +192,17 @@ class _FilesPanelBodyState extends State<_FilesPanelBody> {
             if (model.error.isNotEmpty && showTree)
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text(
-                  model.error,
-                  style: TextStyle(color: theme.colorScheme.error),
+                child: Column(
+                  children: [
+                    Text(
+                      model.error,
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                    TextButton(
+                      onPressed: () => unawaited(state.reloadFiles()),
+                      child: Text(l.retry),
+                    ),
+                  ],
                 ),
               ),
             Expanded(

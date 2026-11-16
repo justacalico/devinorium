@@ -169,6 +169,7 @@ mixin FilesPanelStore on AppStateBase {
   Future<void> reloadFiles() async {
     if (_filesTreeRoot.isLoading) return;
     _filesTreeRoot = FileTreeNode.root()..hasMore = true;
+    _filesError = '';
     _captureFilesScope();
     _bumpFilesTreeVersion();
     if (_activeProjectId == null) {
@@ -227,12 +228,16 @@ mixin FilesPanelStore on AppStateBase {
     } catch (e) {
       if (gen != _serverSeq) return;
       target.error = '$e';
-      target.hasMore = false;
+      // hasMore stays as-is so a failed page keeps its Load more row and
+      // can be retried instead of silently hiding the rest of the folder.
       if (target == _filesTreeRoot) _filesError = '$e';
       _bumpFilesTreeVersion();
+    } finally {
+      // Clear even on a stale return: an isLoadingMore stuck true blocks
+      // every later page request for this node.
+      target.isLoadingMore = false;
+      notifyListeners();
     }
-    target.isLoadingMore = false;
-    notifyListeners();
   }
 
   @override
@@ -344,10 +349,13 @@ mixin FilesPanelStore on AppStateBase {
       if (gen != _serverSeq) return;
       node.error = '$e';
       node.hasMore = false;
+    } finally {
+      // Clear even on a stale return: an isLoading stuck true makes
+      // reloadFiles() and toggleFilesFolder() no-op forever for this node.
+      node.isLoading = false;
+      _bumpFilesTreeVersion();
+      notifyListeners();
     }
-    _bumpFilesTreeVersion();
-    node.isLoading = false;
-    notifyListeners();
   }
 
   Future<void> _refreshParentForPath(String fullPath) async {
