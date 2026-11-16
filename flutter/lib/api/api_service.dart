@@ -1597,8 +1597,15 @@ class ApiService {
     final base = await _client.serverUrl;
     final path = '${_client.pathPrefix}/api/terminal/sessions/$sessionId/ws';
     if (base == null || base.isEmpty) {
-      // Web build: same origin, relative URL.
-      return Uri.parse(path);
+      // Web build: same origin, but the DOM WebSocket still needs an
+      // absolute ws(s) URL — a path-only URI is rejected.
+      final webBase = Uri.base;
+      return Uri(
+        scheme: webBase.scheme == 'https' ? 'wss' : 'ws',
+        host: webBase.host,
+        port: webBase.hasPort ? webBase.port : null,
+        path: path,
+      );
     }
     // Keep any subpath the server is hosted under; replace(path:) alone
     // would drop it and the WS dial would 404 behind a prefix.
