@@ -2,6 +2,26 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.115.4 - 2026-11-16
+#### Bug Fixes
+- 修复 clippy 未内联格式化参数告警 - (6db77dd) - HttpAnimations
+- 终端会话数与 VNC 帧缓冲设置上限 - (032787b) - HttpAnimations
+- 浏览器 MCP 输入行设置长度上限 - (6d4e609) - HttpAnimations
+- WebSocket 握手纳入来源校验 - (fc5042c) - HttpAnimations
+- 会话过期时间统一存储格式 - (9557303) - HttpAnimations
+- 消息与用量写入使用真正的数据库事务 - (a2b394f) - HttpAnimations
+- 线程运行器互斥锁中毒后恢复 - (5e09a3b) - HttpAnimations
+- 终端写入移出异步线程并容忍广播滞后 - (3c1ab57) - HttpAnimations
+- 共享快照不再泄露机器授权令牌 - (eb9741a) - HttpAnimations
+- 公钥认证传输错误回退密码登录 - (1abc1d4) - HttpAnimations
+- 卫星端日志分页与事件缓冲设置上限 - (620a9cd) - HttpAnimations
+- 配对尝试表满时不再清空全部锁定 - (b344062) - HttpAnimations
+- 卫星端文件写补锁、读设限并支持缺失根目录 - (721f6f6) - HttpAnimations
+- 节点响应体读取设置大小上限 - (0775947) - HttpAnimations
+- 节点配对拒绝公网明文并阻止 id 重绑 - (2de93d1) - HttpAnimations
+
+- - -
+
 ## v0.115.3 - 2026-11-15
 #### Bug Fixes
 - 仅传 offset 的列表请求不再丢失偏移 - (0bbf62e) - HttpAnimations
