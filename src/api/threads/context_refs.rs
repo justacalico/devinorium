@@ -169,7 +169,9 @@ async fn resolve_refs_remote(
             resolved.push((raw, abs));
         }
     }
-    let stats = client
+    // A transport error marks every ref missing; it is not proof the files
+    // are gone, only that the node could not answer.
+    let stats = match client
         .fs_stat(
             None,
             &resolved
@@ -178,7 +180,13 @@ async fn resolve_refs_remote(
                 .collect::<Vec<_>>(),
         )
         .await
-        .unwrap_or_default();
+    {
+        Ok(stats) => stats,
+        Err(e) => {
+            tracing::warn!(error = %e, "remote context path stat failed");
+            Default::default()
+        }
+    };
     for (raw, abs) in resolved {
         let rel = raw.path.trim().to_string();
         let stat = stats.get(&abs.to_string_lossy().to_string());

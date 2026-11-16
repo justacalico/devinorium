@@ -49,23 +49,28 @@ async fn target_for(state: &AppState, project: &ProjectRow) -> anyhow::Result<Ta
 }
 
 /// Stat a path wherever it lives. Returns `(exists, is_dir, is_symlink,
-/// canonical, mtime_secs)`.
-async fn fs_stat(target: &Target, path: &Path) -> (bool, bool, bool, Option<PathBuf>, Option<i64>) {
+/// canonical, mtime_secs)`. `None` means the stat could not be performed at
+/// all (unreachable node); callers that treat it as "missing" would skip
+/// cleanup and orphan remote directories, so they must branch on it.
+async fn fs_stat(
+    target: &Target,
+    path: &Path,
+) -> Option<(bool, bool, bool, Option<PathBuf>, Option<i64>)> {
     match &target.node {
         Some(client) => {
             let raw = path.to_string_lossy().to_string();
             match client.fs_stat(None, std::slice::from_ref(&raw)).await {
                 Ok(mut map) => match map.remove(&raw) {
-                    Some(s) => (
+                    Some(s) => Some((
                         s.exists,
                         s.is_dir,
                         s.is_symlink,
                         s.canonical.map(PathBuf::from),
                         s.modified,
-                    ),
-                    None => (false, false, false, None, None),
+                    )),
+                    None => Some((false, false, false, None, None)),
                 },
-                Err(_) => (false, false, false, None, None),
+                Err(_) => None,
             }
         }
         None => {
@@ -78,15 +83,15 @@ async fn fs_stat(target: &Target, path: &Path) -> (bool, bool, bool, Option<Path
                         .ok()
                         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                         .map(|d| d.as_secs() as i64);
-                    (
+                    Some((
                         true,
                         m.is_dir(),
                         m.file_type().is_symlink(),
                         canon,
                         modified,
-                    )
+                    ))
                 }
-                Err(_) => (false, false, false, None, None),
+                Err(_) => Some((false, false, false, None, None)),
             }
         }
     }
@@ -96,19 +101,25 @@ async fn fs_stat(target: &Target, path: &Path) -> (bool, bool, bool, Option<Path
 async fn fs_canonicalize(target: &Target, path: &Path) -> PathBuf {
     fs_stat(target, path)
         .await
-        .3
+        .and_then(|t| t.3)
         .unwrap_or_else(|| path.to_path_buf())
 }
 
 /// Whether the path is a real (non-symlink) directory on its host.
-async fn fs_is_real_dir(target: &Target, path: &Path) -> bool {
-    let (exists, is_dir, is_symlink, _, _) = fs_stat(target, path).await;
-    exists && is_dir && !is_symlink
+/// `Err` means the stat failed outright (unreachable node).
+async fn fs_is_real_dir(target: &Target, path: &Path) -> Result<bool, ()> {
+    match fs_stat(target, path).await {
+        Some((exists, is_dir, is_symlink, _, _)) => Ok(exists && is_dir && !is_symlink),
+        None => Err(()),
+    }
 }
 
-/// Whether the path is a symlink on its host.
-async fn fs_is_symlink(target: &Target, path: &Path) -> bool {
-    fs_stat(target, path).await.2
+/// Whether the path is a symlink on its host. `Err` means unreachable.
+async fn fs_is_symlink(target: &Target, path: &Path) -> Result<bool, ()> {
+    match fs_stat(target, path).await {
+        Some((_, _, is_symlink, _, _)) => Ok(is_symlink),
+        None => Err(()),
+    }
 }
 
 /// Recursive directory removal on whichever host holds the path.
@@ -214,8 +225,10 @@ pub(crate) async fn ensure_thread_worktree(
     // A planted `.<repo>-worktrees` symlink would redirect `git worktree add`
     // into whatever it points at.
     let managed_root = wt::managed_worktrees_root(&status.toplevel, &worktree_root);
-    if fs_is_symlink(&target, &managed_root).await {
-        anyhow::bail!("managed worktree root is a symlink");
+    match fs_is_symlink(&target, &managed_root).await {
+        Ok(true) => anyhow::bail!("managed worktree root is a symlink"),
+        Err(()) => anyhow::bail!("cannot stat managed worktree root"),
+        Ok(false) => {}
     }
 
     let mut attempts = 0;
@@ -369,7 +382,7 @@ pub(crate) async fn sync_agent_created_worktree(
     // mtime is a heuristic; on a node it comes from the remote stat.
     let mut mtimes = Vec::with_capacity(new_wts.len());
     for w in &new_wts {
-        let mtime = fs_stat(&target, &w.path).await.4;
+        let mtime = fs_stat(&target, &w.path).await.and_then(|t| t.4);
         mtimes.push(mtime);
     }
     // Pair each worktree with its mtime, sort ascending, take the newest.
@@ -538,10 +551,20 @@ pub(crate) async fn cleanup_thread_worktree(
     // planted `.<repo>-worktrees` link would turn the sweep into arbitrary
     // directory deletion. Roots are kept canonical so the containment check
     // below compares resolved paths.
+    // A stat transport failure is not "missing": treating it as such would
+    // skip the sweep and orphan real directories on a flapping node, so it
+    // disables the sweep entirely (registered worktree removal still runs).
+    let mut sweep_ok = true;
     let mut managed_roots: Vec<PathBuf> = Vec::new();
     for root in candidate_roots {
-        if !fs_is_real_dir(&target, &root).await {
-            continue;
+        match fs_is_real_dir(&target, &root).await {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(()) => {
+                tracing::warn!(thread_id = %thread.id, root = %root.display(), "worktree sweep disabled: stat failed");
+                sweep_ok = false;
+                break;
+            }
         }
         let canon = fs_canonicalize(&target, &root).await;
         if !managed_roots.contains(&canon) {
@@ -566,7 +589,11 @@ pub(crate) async fn cleanup_thread_worktree(
     // since the snapshot above belongs to someone else and must survive.
     // When the re-list fails the stale snapshot cannot tell them apart, so
     // the sweep is skipped; the branch delete below still runs.
-    if let Ok(worktrees_now) = target.git.worktrees(&repo, true).await {
+    let worktrees_now = match sweep_ok {
+        true => target.git.worktrees(&repo, true).await.ok(),
+        false => None,
+    };
+    if let Some(worktrees_now) = worktrees_now {
         let managed_paths = managed_roots
             .iter()
             .map(|root| root.join(wt::sanitize_branch_for_path(branch)));
