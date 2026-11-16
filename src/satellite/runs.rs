@@ -7,7 +7,7 @@
 //! the run's cancel flag so the agent stops gracefully and keeps its
 //! session context.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::task::{Context, Poll};
 
@@ -84,20 +84,23 @@ async fn run(State(state): State<Arc<SatelliteState>>, Json(req): Json<RunReques
     }
 
     let (tx, rx) = mpsc::unbounded_channel::<NodeEvent>();
+    let buffered = Arc::new(AtomicUsize::new(0));
     let pending_ids: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
 
     let task = {
         let state = state.clone();
         let tx = tx.clone();
         let cancel = cancel.clone();
+        let buffered = buffered.clone();
         let pending_ids = pending_ids.clone();
         tokio::spawn(async move {
-            drive(state, req, provider, tx, cancel, pending_ids).await;
+            drive(state, req, provider, tx, cancel, buffered, pending_ids).await;
         })
     };
 
     let stream = RunEventStream {
         rx: tokio_stream::wrappers::UnboundedReceiverStream::new(rx),
+        buffered,
         _guard: RunGuard {
             state,
             run_id: run_id.to_string(),
@@ -112,22 +115,41 @@ async fn run(State(state): State<Arc<SatelliteState>>, Json(req): Json<RunReques
         .into_response()
 }
 
+/// Events buffered for a client that reads slower than the provider
+/// emits. Past this point the run is cancelled rather than letting a
+/// drip-fed consumer grow satellite memory without bound.
+const RUN_EVENT_BUFFER_CAP: usize = 1024;
+
 /// Convert the wire options into provider-facing [`SendOptions`], wiring the
 /// interactive callbacks through the event channel.
 fn send_options(
     state: &Arc<SatelliteState>,
     tx: &mpsc::UnboundedSender<NodeEvent>,
     cancel: Arc<AtomicBool>,
+    buffered: Arc<AtomicUsize>,
     pending_ids: Arc<StdMutex<Vec<String>>>,
     wire: crate::node::WireSendOptions,
 ) -> anyhow::Result<SendOptions> {
     let part_callback: PartCallback = {
         let tx = tx.clone();
+        let stalled = cancel.clone();
         Arc::new(move |ev: PartEvent| {
-            let _ = tx.send(NodeEvent::Part {
-                part: ev.part().clone(),
-                update: ev.is_update(),
-            });
+            // Part events are the flood source; the stream decrements this
+            // counter as it drains them.
+            if buffered.fetch_add(1, Ordering::SeqCst) >= RUN_EVENT_BUFFER_CAP {
+                buffered.fetch_sub(1, Ordering::SeqCst);
+                stalled.store(true, Ordering::SeqCst);
+                return;
+            }
+            if tx
+                .send(NodeEvent::Part {
+                    part: ev.part().clone(),
+                    update: ev.is_update(),
+                })
+                .is_err()
+            {
+                buffered.fetch_sub(1, Ordering::SeqCst);
+            }
         })
     };
 
@@ -246,6 +268,7 @@ async fn drive(
     provider: Box<dyn crate::providers::Provider>,
     tx: mpsc::UnboundedSender<NodeEvent>,
     cancel: Arc<AtomicBool>,
+    buffered: Arc<AtomicUsize>,
     pending_ids: Arc<StdMutex<Vec<String>>>,
 ) {
     let mut wire = req.options;
@@ -298,7 +321,7 @@ async fn drive(
     let session_id = req.session_id.clone();
     let result_prompt_dir = working_dir.clone();
     let result_run_id = req.run_id.clone();
-    let options = match send_options(&state, &tx, cancel, pending_ids, wire) {
+    let options = match send_options(&state, &tx, cancel, buffered, pending_ids, wire) {
         Ok(o) => o,
         Err(e) => {
             let _ = tx.send(NodeEvent::Error {
@@ -384,6 +407,7 @@ async fn drive(
 /// cancels and unregisters the run.
 struct RunEventStream {
     rx: tokio_stream::wrappers::UnboundedReceiverStream<NodeEvent>,
+    buffered: Arc<AtomicUsize>,
     _guard: RunGuard,
 }
 
@@ -397,6 +421,9 @@ impl Stream for RunEventStream {
         let ev = std::pin::Pin::new(&mut self.rx).poll_next(cx);
         match ev {
             Poll::Ready(Some(ev)) => {
+                if matches!(ev, NodeEvent::Part { .. }) {
+                    self.buffered.fetch_sub(1, Ordering::SeqCst);
+                }
                 let json = serde_json::to_string(&ev).unwrap_or_else(|_| "{}".into());
                 Poll::Ready(Some(Ok(Event::default().event("node").data(json))))
             }
@@ -444,8 +471,9 @@ async fn callback(
     State(state): State<Arc<SatelliteState>>,
     Json(req): Json<CallbackRequest>,
 ) -> Response {
-    let request_id = req.request_id.trim().to_string();
-    let pending = state.pending.lock().await.remove(&request_id);
+    // Provider-supplied ids are stored verbatim, so the lookup must not
+    // trim either or an id with whitespace could never be answered.
+    let pending = state.pending.lock().await.remove(&req.request_id);
     let Some(pending) = pending else {
         return (
             StatusCode::NOT_FOUND,

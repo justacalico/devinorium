@@ -314,7 +314,16 @@ async fn pair(
             let now = Instant::now();
             attempts.retain(|_, a| a.locked_until.is_some_and(|t| t > now));
             if attempts.len() >= PAIR_ATTEMPTS_CAP {
-                attempts.clear();
+                // Everything left is actively locked. Evict the soonest-
+                // expiring lockout rather than wiping every lockout at
+                // once, which would reset the brute-force budget.
+                if let Some(oldest) = attempts
+                    .iter()
+                    .min_by_key(|(_, a)| a.locked_until)
+                    .map(|(ip, _)| *ip)
+                {
+                    attempts.remove(&oldest);
+                }
             }
         }
         let entry = attempts.entry(ip).or_insert(PairAttempts {

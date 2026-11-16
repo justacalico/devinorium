@@ -40,6 +40,41 @@ fn enc_seg(s: &str) -> String {
     percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
 }
 
+/// Hard cap on JSON bodies read from a node. Generous enough for the
+/// base64 file payloads `fs_read` returns (4 MiB inline reads encode to
+/// ~5.5 MiB) while a compromised or spoofed node cannot grow hub memory
+/// with an unbounded body.
+const MAX_NODE_JSON_BODY: usize = 8 * 1024 * 1024;
+
+/// Read a response body with a hard cap, refusing bodies over `cap`.
+pub(crate) async fn read_body_capped(
+    resp: &mut reqwest::Response,
+    cap: usize,
+) -> Result<Vec<u8>, NodeCallError> {
+    let mut body = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(NodeCallError::transport)? {
+        if body.len() + chunk.len() > cap {
+            return Err(NodeCallError::Remote {
+                kind: "too_large".into(),
+                message: format!("node response body exceeds {cap} bytes"),
+            });
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
+/// Parse a JSON node response with [`MAX_NODE_JSON_BODY`] enforced.
+async fn json_capped<T: serde::de::DeserializeOwned>(
+    mut resp: reqwest::Response,
+) -> Result<T, NodeCallError> {
+    let body = read_body_capped(&mut resp, MAX_NODE_JSON_BODY).await?;
+    serde_json::from_slice(&body).map_err(|e| NodeCallError::Remote {
+        kind: "bad_response".into(),
+        message: format!("invalid node response: {e}"),
+    })
+}
+
 /// Response headers that must not be relayed back to a hub client. Same
 /// rationale as the old reverse proxy: a node must not set cookies on the
 /// hub's origin or inject policy headers.
@@ -146,7 +181,11 @@ impl NodeClient {
         if !resp.status().is_success() {
             anyhow::bail!("node info failed: {}", resp.status());
         }
-        Ok(resp.json::<NodeInfo>().await?)
+        let mut resp = resp;
+        let body = read_body_capped(&mut resp, 64 * 1024)
+            .await
+            .map_err(|e| anyhow::anyhow!("node info body: {e}"))?;
+        Ok(serde_json::from_slice::<NodeInfo>(&body)?)
     }
 
     /// Exchange a pairing code for a node token. `base_url` must already be
@@ -168,9 +207,7 @@ impl NodeClient {
         if !resp.status().is_success() {
             return Err(NodeCallError::from_response(resp).await);
         }
-        resp.json::<PairResponse>()
-            .await
-            .map_err(NodeCallError::transport)
+        json_capped(resp).await
     }
 
     /// `POST /api/node/run`; the response body is the NodeEvent SSE stream.
@@ -240,11 +277,7 @@ impl NodeClient {
         if !resp.status().is_success() {
             return Err(NodeCallError::from_response(resp).await);
         }
-        Ok(resp
-            .json::<StatResponse>()
-            .await
-            .map_err(NodeCallError::transport)?
-            .results)
+        Ok(json_capped::<StatResponse>(resp).await?.results)
     }
 
     /// Read a file on the node, returning (mime, bytes). `None` when the
@@ -258,7 +291,9 @@ impl NodeClient {
         if !resp.status().is_success() {
             return None;
         }
-        let v: serde_json::Value = resp.json().await.ok()?;
+        let mut resp = resp;
+        let body = read_body_capped(&mut resp, MAX_NODE_JSON_BODY).await.ok()?;
+        let v: serde_json::Value = serde_json::from_slice(&body).ok()?;
         let b64 = v["base64"].as_str()?;
         use base64::Engine;
         let bytes = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
@@ -395,7 +430,7 @@ impl NodeClient {
         if !resp.status().is_success() {
             return Err(NodeCallError::from_response(resp).await);
         }
-        let v: serde_json::Value = resp.json().await.map_err(NodeCallError::transport)?;
+        let v: serde_json::Value = json_capped(resp).await?;
         Ok(v["id"].as_str().unwrap_or_default().to_string())
     }
 
@@ -443,11 +478,7 @@ impl NodeClient {
         if !resp.status().is_success() {
             return Err(NodeCallError::from_response(resp).await);
         }
-        Ok(resp
-            .json::<CloneNodeResponse>()
-            .await
-            .map_err(NodeCallError::transport)?
-            .path)
+        Ok(json_capped::<CloneNodeResponse>(resp).await?.path)
     }
 
     /// `POST /api/node/provider/models`.
@@ -473,7 +504,7 @@ impl NodeClient {
         if !resp.status().is_success() {
             return Err(NodeCallError::from_response(resp).await);
         }
-        resp.json().await.map_err(NodeCallError::transport)
+        json_capped(resp).await
     }
 
     /// `POST /api/node/provider/health`.
@@ -519,7 +550,7 @@ impl NodeClient {
         if !resp.status().is_success() {
             return Err(NodeCallError::from_response(resp).await);
         }
-        resp.json().await.map_err(NodeCallError::transport)
+        json_capped(resp).await
     }
 
     /// Bearer token used on upstream WebSocket dials.
@@ -562,9 +593,12 @@ impl NodeCallError {
         Self::Transport(e)
     }
 
-    async fn from_response(resp: reqwest::Response) -> Self {
+    async fn from_response(mut resp: reqwest::Response) -> Self {
         let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
+        let body = read_body_capped(&mut resp, 16 * 1024)
+            .await
+            .map(|b| String::from_utf8_lossy(&b).to_string())
+            .unwrap_or_default();
         if let Ok(err) = serde_json::from_str::<NodeError>(&body) {
             return Self::Remote {
                 kind: err.kind,
@@ -728,7 +762,7 @@ impl RemoteGit {
         if !resp.status().is_success() {
             return Err(NodeCallError::from_response(resp).await.into_git_error());
         }
-        resp.json::<serde_json::Value>()
+        json_capped::<serde_json::Value>(resp)
             .await
             .map_err(|e| GitError::Other(format!("invalid node response: {e}")))
     }
