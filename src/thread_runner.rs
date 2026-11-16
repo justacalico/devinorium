@@ -188,6 +188,30 @@ impl RunState {
         self.publish_attention();
     }
 
+    /// Clear the pending permission request only when it is still the one
+    /// with `request_id`: a finished request must not wipe a newer prompt.
+    pub fn clear_permission_request(self: &Arc<Self>, request_id: &str) {
+        if let Ok(mut guard) = self.permission_request.lock() {
+            if guard.as_ref().is_none_or(|r| r.request_id != request_id) {
+                return;
+            }
+            *guard = None;
+        }
+        self.publish_attention();
+    }
+
+    /// Clear the pending ask request only when it is still the one with
+    /// `request_id`.
+    pub fn clear_ask_request(self: &Arc<Self>, request_id: &str) {
+        if let Ok(mut guard) = self.ask_request.lock() {
+            if guard.as_ref().is_none_or(|r| r.request_id != request_id) {
+                return;
+            }
+            *guard = None;
+        }
+        self.publish_attention();
+    }
+
     pub fn set_plan(&self, plan: Option<Plan>) {
         if let Ok(mut guard) = self.plan.lock() {
             *guard = plan;
@@ -714,7 +738,9 @@ impl ThreadRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::{AskQuestion, AskRequest, MessagePart, ToolCallEvent};
+    use crate::providers::{
+        AskQuestion, AskRequest, MessagePart, PermissionRequest, ToolCallEvent,
+    };
 
     #[tokio::test]
     async fn run_state_accumulates_text_and_thinking_for_snapshot() {
@@ -987,6 +1013,76 @@ mod tests {
         state.set_ask_request(None);
         let snapshot = state.snapshot().await;
         assert!(snapshot.ask_request.is_none());
+    }
+
+    #[tokio::test]
+    async fn clear_request_only_removes_its_own_request() {
+        let state = Arc::new(RunState {
+            run_id: "r1".into(),
+            thread_id: "t1".into(),
+            user_id: 1,
+            events: std::sync::Mutex::new(None),
+            initial_receiver: std::sync::Mutex::new(None),
+            next_seq: std::sync::atomic::AtomicU64::new(0),
+            status: RwLock::new(RunStatus::Running),
+            error: RwLock::new(None),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
+            abort: std::sync::Mutex::new(None),
+            task_done: std::sync::atomic::AtomicBool::new(false),
+            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            parts: std::sync::Mutex::new(vec![]),
+            permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
+            plan: std::sync::Mutex::new(None),
+            rate_limit: std::sync::Mutex::new(None),
+            lifecycle: None,
+        });
+
+        let perm = |id: &str| PermissionRequest {
+            request_id: id.into(),
+            scope: "exec".into(),
+            title: "t".into(),
+            input: None,
+            options: vec![],
+        };
+        state.set_permission_request(Some(perm("a")));
+        state.clear_permission_request("other");
+        assert_eq!(
+            state
+                .permission_request
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .request_id,
+            "a"
+        );
+        state.clear_permission_request("a");
+        assert!(state.permission_request.lock().unwrap().is_none());
+        // A stale clear must not wipe a newer prompt under the same slot.
+        state.set_permission_request(Some(perm("b")));
+        state.clear_permission_request("a");
+        assert_eq!(
+            state
+                .permission_request
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .request_id,
+            "b"
+        );
+
+        state.set_ask_request(Some(AskRequest {
+            request_id: "x".into(),
+            message: "m".into(),
+            questions: vec![],
+        }));
+        state.clear_ask_request("other");
+        assert!(state.ask_request.lock().unwrap().is_some());
+        state.clear_ask_request("x");
+        assert!(state.ask_request.lock().unwrap().is_none());
     }
 
     #[tokio::test]

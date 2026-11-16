@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,6 +20,8 @@ use crate::providers::{
 use crate::thread_runner::RunState;
 use crate::{AppState, PendingAskRequest, PendingPermissionRequest};
 
+static REQUEST_NONCE: AtomicU64 = AtomicU64::new(1);
+
 pub(crate) fn build_permission_callback(
     state: AppState,
     user_id: i64,
@@ -32,26 +35,39 @@ pub(crate) fn build_permission_callback(
             let thread_id = thread_id.clone();
             Box::pin(async move {
                 let (response_tx, response_rx) = tokio::sync::oneshot::channel::<String>();
-                let _cleanup =
-                    RemoveOnDrop::new(state.clone(), run.clone(), req.request_id.clone());
-
+                let key = (thread_id.clone(), req.request_id.clone());
+                let nonce = REQUEST_NONCE.fetch_add(1, Ordering::SeqCst);
                 {
                     let mut map = state.pending_permission_requests.lock().await;
+                    // A provider-chosen id may repeat; the newcomer cancels
+                    // rather than evicting the prompt already on screen.
+                    // An entry whose waiter already went away is a zombie,
+                    // so the newcomer takes its slot instead.
+                    match map.get(&key) {
+                        Some(p) if !p.sender.is_closed() => return PermissionOutcome::Cancel,
+                        Some(_) => {
+                            map.remove(&key);
+                        }
+                        None => {}
+                    }
                     map.insert(
-                        req.request_id.clone(),
+                        key.clone(),
                         PendingPermissionRequest {
                             user_id,
-                            thread_id,
+                            nonce,
                             sender: response_tx,
                         },
                     );
                 }
+                // Arm cleanup only after the entry exists, so a duplicate
+                // request id cannot drop the incumbent's prompt.
+                let _cleanup = RemoveOnDrop::new(state.clone(), run.clone(), key, nonce);
 
                 run.set_permission_request(Some(req.clone()));
                 let payload = match serde_json::to_string(&req) {
                     Ok(json) => json,
                     Err(_) => {
-                        run.set_permission_request(None);
+                        run.clear_permission_request(&req.request_id);
                         return PermissionOutcome::Cancel;
                     }
                 };
@@ -62,7 +78,7 @@ pub(crate) fn build_permission_callback(
                 let result =
                     tokio::time::timeout(Duration::from_secs(7 * 24 * 60 * 60), response_rx).await;
 
-                run.set_permission_request(None);
+                run.clear_permission_request(&req.request_id);
 
                 match result {
                     Ok(Ok(option_id)) if !option_id.is_empty() => {
@@ -81,41 +97,52 @@ pub(crate) fn build_permission_callback(
 struct RemoveOnDrop {
     state: Option<AppState>,
     run: Option<Arc<RunState>>,
-    request_id: String,
+    key: (String, String),
+    nonce: u64,
 }
 
 impl RemoveOnDrop {
-    fn new(state: AppState, run: Arc<RunState>, request_id: String) -> Self {
+    fn new(state: AppState, run: Arc<RunState>, key: (String, String), nonce: u64) -> Self {
         Self {
             state: Some(state),
             run: Some(run),
-            request_id,
+            key,
+            nonce,
         }
+    }
+}
+
+/// Remove `key` only while the stored entry is still the one the guard
+/// was armed for; a newer entry under the same key must survive.
+async fn remove_stale<K, V>(
+    map: &tokio::sync::Mutex<HashMap<K, V>>,
+    key: K,
+    current: impl Fn(&V) -> bool,
+) where
+    K: Eq + std::hash::Hash,
+{
+    let mut map = map.lock().await;
+    if map.get(&key).is_some_and(current) {
+        map.remove(&key);
     }
 }
 
 impl Drop for RemoveOnDrop {
     fn drop(&mut self) {
         if let Some(state) = self.state.take() {
-            let request_id = self.request_id.clone();
-            tokio::spawn(async move {
-                let _ = state
-                    .pending_permission_requests
-                    .lock()
-                    .await
-                    .remove(&request_id);
-            });
+            if tokio::runtime::Handle::try_current().is_ok() {
+                let key = self.key.clone();
+                let nonce = self.nonce;
+                tokio::spawn(async move {
+                    remove_stale(&state.pending_permission_requests, key, |p| {
+                        p.nonce == nonce
+                    })
+                    .await;
+                });
+            }
         }
         if let Some(run) = self.run.take() {
-            if let Ok(guard) = run.permission_request.lock() {
-                if guard
-                    .as_ref()
-                    .is_some_and(|r| r.request_id == self.request_id)
-                {
-                    drop(guard);
-                    run.set_permission_request(None);
-                }
-            }
+            run.clear_permission_request(&self.key.1);
         }
     }
 }
@@ -136,14 +163,13 @@ pub(super) async fn respond_permission(
         return StatusCode::NOT_FOUND;
     }
 
-    // Look up the entry before removing it: a request_id that belongs to a
-    // different user or thread must not pop (and thereby cancel) the real
-    // pending prompt.
+    let key = (thread_id, request_id);
     let sender = {
         let mut map = state.pending_permission_requests.lock().await;
-        match map.get(&request_id) {
-            Some(p) if p.user_id == user.id && p.thread_id == thread_id => map.remove(&request_id),
-            _ => None,
+        if map.get(&key).is_some_and(|p| p.user_id == user.id) {
+            map.remove(&key)
+        } else {
+            None
         }
     };
 
@@ -178,20 +204,26 @@ pub(crate) fn build_ask_callback(
             Box::pin(async move {
                 let (response_tx, response_rx) =
                     tokio::sync::oneshot::channel::<Option<HashMap<String, serde_json::Value>>>();
-                let _cleanup =
-                    AskRemoveOnDrop::new(state.clone(), run.clone(), req.request_id.clone());
-
+                let key = (thread_id.clone(), req.request_id.clone());
+                let nonce = REQUEST_NONCE.fetch_add(1, Ordering::SeqCst);
                 {
                     let mut map = state.pending_ask_requests.lock().await;
+                    if let Some(p) = map.get(&key) {
+                        if !p.sender.is_closed() {
+                            return AskOutcome::Cancel;
+                        }
+                        map.remove(&key);
+                    }
                     map.insert(
-                        req.request_id.clone(),
+                        key.clone(),
                         PendingAskRequest {
                             user_id,
-                            thread_id,
+                            nonce,
                             sender: response_tx,
                         },
                     );
                 }
+                let _cleanup = AskRemoveOnDrop::new(state.clone(), run.clone(), key, nonce);
 
                 let payload = match serde_json::to_string(&req) {
                     Ok(json) => json,
@@ -199,13 +231,13 @@ pub(crate) fn build_ask_callback(
                         return AskOutcome::Cancel;
                     }
                 };
-                run.set_ask_request(Some(req));
+                run.set_ask_request(Some(req.clone()));
                 run.emit("ask_request", &payload);
 
                 let result =
                     tokio::time::timeout(Duration::from_secs(7 * 24 * 60 * 60), response_rx).await;
 
-                run.set_ask_request(None);
+                run.clear_ask_request(&req.request_id);
 
                 match result {
                     Ok(Ok(Some(answers))) => AskOutcome::Answers(answers),
@@ -219,15 +251,17 @@ pub(crate) fn build_ask_callback(
 struct AskRemoveOnDrop {
     state: Option<AppState>,
     run: Option<Arc<RunState>>,
-    request_id: String,
+    key: (String, String),
+    nonce: u64,
 }
 
 impl AskRemoveOnDrop {
-    fn new(state: AppState, run: Arc<RunState>, request_id: String) -> Self {
+    fn new(state: AppState, run: Arc<RunState>, key: (String, String), nonce: u64) -> Self {
         Self {
             state: Some(state),
             run: Some(run),
-            request_id,
+            key,
+            nonce,
         }
     }
 }
@@ -235,21 +269,16 @@ impl AskRemoveOnDrop {
 impl Drop for AskRemoveOnDrop {
     fn drop(&mut self) {
         if let Some(state) = self.state.take() {
-            let request_id = self.request_id.clone();
-            tokio::spawn(async move {
-                let _ = state.pending_ask_requests.lock().await.remove(&request_id);
-            });
+            if tokio::runtime::Handle::try_current().is_ok() {
+                let key = self.key.clone();
+                let nonce = self.nonce;
+                tokio::spawn(async move {
+                    remove_stale(&state.pending_ask_requests, key, |p| p.nonce == nonce).await;
+                });
+            }
         }
         if let Some(run) = self.run.take() {
-            if let Ok(guard) = run.ask_request.lock() {
-                if guard
-                    .as_ref()
-                    .is_some_and(|r| r.request_id == self.request_id)
-                {
-                    drop(guard);
-                    run.set_ask_request(None);
-                }
-            }
+            run.clear_ask_request(&self.key.1);
         }
     }
 }
@@ -269,11 +298,13 @@ pub(super) async fn respond_ask(
         return StatusCode::NOT_FOUND;
     }
 
+    let key = (thread_id, request_id);
     let sender = {
         let mut map = state.pending_ask_requests.lock().await;
-        match map.get(&request_id) {
-            Some(p) if p.user_id == user.id && p.thread_id == thread_id => map.remove(&request_id),
-            _ => None,
+        if map.get(&key).is_some_and(|p| p.user_id == user.id) {
+            map.remove(&key)
+        } else {
+            None
         }
     };
 
@@ -288,7 +319,9 @@ pub(super) async fn respond_ask(
 
 #[cfg(test)]
 mod tests {
-    use super::{AskResponseBody, PermissionResponseBody};
+    use super::{remove_stale, AskResponseBody, PermissionResponseBody};
+    use crate::PendingPermissionRequest;
+    use std::collections::HashMap;
 
     #[test]
     fn permission_response_body_deserializes_option_id() {
@@ -308,5 +341,25 @@ mod tests {
 
         let without: AskResponseBody = serde_json::from_str("{}").unwrap();
         assert!(without.answers.is_none());
+    }
+
+    #[tokio::test]
+    async fn stale_cleanup_only_removes_matching_nonce() {
+        let map = tokio::sync::Mutex::new(HashMap::new());
+        let key = ("t".to_string(), "r".to_string());
+        let (tx, _rx) = tokio::sync::oneshot::channel::<String>();
+        map.lock().await.insert(
+            key.clone(),
+            PendingPermissionRequest {
+                user_id: 1,
+                nonce: 2,
+                sender: tx,
+            },
+        );
+
+        remove_stale(&map, key.clone(), |p| p.nonce == 1).await;
+        assert!(map.lock().await.contains_key(&key));
+        remove_stale(&map, key.clone(), |p| p.nonce == 2).await;
+        assert!(map.lock().await.is_empty());
     }
 }

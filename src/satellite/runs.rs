@@ -125,6 +125,7 @@ const RUN_EVENT_BUFFER_CAP: usize = 1024;
 fn send_options(
     state: &Arc<SatelliteState>,
     tx: &mpsc::UnboundedSender<NodeEvent>,
+    run_id: &str,
     cancel: Arc<AtomicBool>,
     buffered: Arc<AtomicUsize>,
     pending_ids: Arc<StdMutex<Vec<String>>>,
@@ -167,18 +168,28 @@ fn send_options(
         let tx = tx.clone();
         let state = state.clone();
         let pending_ids = pending_ids.clone();
+        let run_id = run_id.to_string();
         Arc::new(move |request: crate::providers::PermissionRequest| {
             let tx = tx.clone();
             let state = state.clone();
             let pending_ids = pending_ids.clone();
+            let run_id = run_id.clone();
             Box::pin(async move {
-                let request_id = request.request_id.clone();
+                // Provider-chosen ids repeat across runs; namespace by run
+                // so two runs cannot evict or answer each other's prompt.
+                // The hub echoes this id back verbatim in the callback.
+                let request_id = format!("{run_id}/{}", request.request_id);
                 let (otx, orx) = oneshot::channel();
-                state
-                    .pending
-                    .lock()
-                    .await
-                    .insert(request_id.clone(), PendingCallback::Permission(otx));
+                {
+                    let mut pending = state.pending.lock().await;
+                    // Same rule as the hub: a repeated id inside one run
+                    // cancels the newcomer rather than evicting the prompt
+                    // already on screen.
+                    if pending.contains_key(&request_id) {
+                        return PermissionOutcome::Cancel;
+                    }
+                    pending.insert(request_id.clone(), PendingCallback::Permission(otx));
+                }
                 if let Ok(mut ids) = pending_ids.lock() {
                     ids.push(request_id.clone());
                 }
@@ -200,18 +211,22 @@ fn send_options(
         let tx = tx.clone();
         let state = state.clone();
         let pending_ids = pending_ids.clone();
+        let run_id = run_id.to_string();
         Arc::new(move |request: crate::providers::AskRequest| {
             let tx = tx.clone();
             let state = state.clone();
             let pending_ids = pending_ids.clone();
+            let run_id = run_id.clone();
             Box::pin(async move {
-                let request_id = request.request_id.clone();
+                let request_id = format!("{run_id}/{}", request.request_id);
                 let (otx, orx) = oneshot::channel();
-                state
-                    .pending
-                    .lock()
-                    .await
-                    .insert(request_id.clone(), PendingCallback::Ask(otx));
+                {
+                    let mut pending = state.pending.lock().await;
+                    if pending.contains_key(&request_id) {
+                        return AskOutcome::Cancel;
+                    }
+                    pending.insert(request_id.clone(), PendingCallback::Ask(otx));
+                }
                 if let Ok(mut ids) = pending_ids.lock() {
                     ids.push(request_id.clone());
                 }
@@ -321,7 +336,15 @@ async fn drive(
     let session_id = req.session_id.clone();
     let result_prompt_dir = working_dir.clone();
     let result_run_id = req.run_id.clone();
-    let options = match send_options(&state, &tx, cancel, buffered, pending_ids, wire) {
+    let options = match send_options(
+        &state,
+        &tx,
+        &req.run_id,
+        cancel,
+        buffered,
+        pending_ids,
+        wire,
+    ) {
         Ok(o) => o,
         Err(e) => {
             let _ = tx.send(NodeEvent::Error {

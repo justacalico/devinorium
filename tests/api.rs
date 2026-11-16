@@ -7464,10 +7464,10 @@ async fn permission_response_to_other_thread_keeps_pending_request() {
 
     let (tx, rx) = tokio::sync::oneshot::channel::<String>();
     state.pending_permission_requests.lock().await.insert(
-        "req-1".to_string(),
+        (tid_a.clone(), "req-1".to_string()),
         devinorium::PendingPermissionRequest {
             user_id: owner_id,
-            thread_id: tid_a.clone(),
+            nonce: 1,
             sender: tx,
         },
     );
@@ -7488,7 +7488,7 @@ async fn permission_response_to_other_thread_keeps_pending_request() {
         .pending_permission_requests
         .lock()
         .await
-        .contains_key("req-1"));
+        .contains_key(&(tid_a.clone(), "req-1".to_string())));
 
     // The owning thread consumes it normally.
     let resp = app
@@ -7518,10 +7518,10 @@ async fn ask_response_to_other_thread_keeps_pending_request() {
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     state.pending_ask_requests.lock().await.insert(
-        "req-1".to_string(),
+        (tid_a.clone(), "req-1".to_string()),
         devinorium::PendingAskRequest {
             user_id: owner_id,
-            thread_id: tid_a.clone(),
+            nonce: 1,
             sender: tx,
         },
     );
@@ -7541,7 +7541,7 @@ async fn ask_response_to_other_thread_keeps_pending_request() {
         .pending_ask_requests
         .lock()
         .await
-        .contains_key("req-1"));
+        .contains_key(&(tid_a.clone(), "req-1".to_string())));
 
     let resp = app
         .clone()
@@ -7556,6 +7556,405 @@ async fn ask_response_to_other_thread_keeps_pending_request() {
     assert_eq!(resp.status(), StatusCode::OK);
     let answers = rx.await.unwrap().unwrap();
     assert_eq!(answers["x"], "y");
+}
+
+/// Fires two requests with the same request id in one run so the second
+/// must cancel instead of evicting the first from the map.
+struct DupRequestProvider {
+    seen: Arc<std::sync::Mutex<Vec<String>>>,
+    ask: bool,
+}
+
+impl DupRequestProvider {
+    async fn drive_ask(&self, cb: &devinorium::providers::AskCallback) {
+        let mk = || devinorium::providers::AskRequest {
+            request_id: "dup-1".into(),
+            message: "need input".into(),
+            questions: vec![],
+        };
+        use devinorium::providers::AskOutcome as Outcome;
+        let first = tokio::spawn(cb(mk()));
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let second = match cb(mk()).await {
+            Outcome::Cancel => "second:cancel".to_string(),
+            Outcome::Answers(_) => "second:answers".into(),
+        };
+        self.seen.lock().unwrap().push(second);
+        let first = match first.await.unwrap() {
+            Outcome::Answers(_) => "first:answers".to_string(),
+            Outcome::Cancel => "first:cancel".into(),
+        };
+        self.seen.lock().unwrap().push(first);
+    }
+
+    async fn drive(&self, cb: &devinorium::providers::PermissionCallback) {
+        let mk = || devinorium::providers::PermissionRequest {
+            request_id: "dup-1".into(),
+            scope: "exec".into(),
+            title: "run thing".into(),
+            input: None,
+            options: vec![],
+        };
+        use devinorium::providers::PermissionOutcome as Outcome;
+        let first = tokio::spawn(cb(mk()));
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let second = match cb(mk()).await {
+            Outcome::Cancel => "second:cancel".to_string(),
+            Outcome::Allow { .. } => "second:allow".into(),
+        };
+        self.seen.lock().unwrap().push(second);
+        let first = match first.await.unwrap() {
+            Outcome::Allow { option_id } => format!("first:allow:{option_id}"),
+            Outcome::Cancel => "first:cancel".into(),
+        };
+        self.seen.lock().unwrap().push(first);
+    }
+}
+
+#[async_trait]
+impl Provider for DupRequestProvider {
+    fn id(&self) -> &str {
+        "dup-request"
+    }
+    fn name(&self) -> &str {
+        "DupRequest"
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![ModelInfo {
+            id: "m".into(),
+            label: "m".into(),
+            cost_tier: "free".into(),
+            family: "m".into(),
+            cost_summary: "free".into(),
+            max_context_tokens: 1,
+            max_output_tokens: 1,
+            is_new: false,
+            is_beta: false,
+            default_reasoning_effort: None,
+            supported_reasoning_efforts: vec![],
+        }])
+    }
+    async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
+        if self.ask {
+            if let Some(cb) = &req.options.ask_callback {
+                self.drive_ask(cb).await;
+            }
+        } else if let Some(cb) = &req.options.permission_callback {
+            self.drive(cb).await;
+        }
+        Ok(StartResponse {
+            session_id: "dup-session".into(),
+            reply: "done".into(),
+            thinking: String::new(),
+            parts: vec![],
+            title: "t".into(),
+            usage: None,
+        })
+    }
+    async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
+        if self.ask {
+            if let Some(cb) = &req.options.ask_callback {
+                self.drive_ask(cb).await;
+            }
+        } else if let Some(cb) = &req.options.permission_callback {
+            self.drive(cb).await;
+        }
+        Ok(SendResponse {
+            reply: "done".into(),
+            thinking: String::new(),
+            parts: vec![],
+            usage: None,
+        })
+    }
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn duplicate_permission_request_id_keeps_first_pending() {
+    let seen = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let (mut state, _db) = app_state().await;
+    state.provider = Arc::new(DupRequestProvider {
+        seen: seen.clone(),
+        ask: false,
+    });
+    let app = devinorium::build_app(state.clone());
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "dup").await;
+
+    let app2 = app.clone();
+    let cookie2 = cookie.clone();
+    let tid2 = tid.clone();
+    let send = tokio::spawn(async move {
+        let boundary = "----dupboundary";
+        let body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\ngo\r\n--{boundary}--\r\n"
+        );
+        app2.oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid2}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie2)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+    });
+
+    let key = (tid.clone(), "dup-1".to_string());
+    for _ in 0..50 {
+        if state
+            .pending_permission_requests
+            .lock()
+            .await
+            .contains_key(&key)
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(state
+        .pending_permission_requests
+        .lock()
+        .await
+        .contains_key(&key));
+
+    // The duplicate must be rejected while the first request is still
+    // pending; only then is it safe to answer the first without racing
+    // the second insert.
+    for _ in 0..50 {
+        if seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|s| s.starts_with("second:"))
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(seen.lock().unwrap().contains(&"second:cancel".to_string()));
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/permission/dup-1"),
+            &cookie,
+            r#"{"option_id":"yes"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = tokio::time::timeout(std::time::Duration::from_secs(10), send)
+        .await
+        .expect("send stream did not finish")
+        .unwrap()
+        .unwrap();
+    body_str(resp.into_body()).await;
+    assert!(seen
+        .lock()
+        .unwrap()
+        .contains(&"first:allow:yes".to_string()));
+}
+
+#[tokio::test]
+async fn duplicate_ask_request_id_keeps_first_pending() {
+    let seen = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let (mut state, _db) = app_state().await;
+    state.provider = Arc::new(DupRequestProvider {
+        seen: seen.clone(),
+        ask: true,
+    });
+    let app = devinorium::build_app(state.clone());
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "dup").await;
+
+    let app2 = app.clone();
+    let cookie2 = cookie.clone();
+    let tid2 = tid.clone();
+    let send = tokio::spawn(async move {
+        let boundary = "----dupboundary";
+        let body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\ngo\r\n--{boundary}--\r\n"
+        );
+        app2.oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid2}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie2)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+    });
+
+    let key = (tid.clone(), "dup-1".to_string());
+    for _ in 0..50 {
+        if state.pending_ask_requests.lock().await.contains_key(&key) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(state.pending_ask_requests.lock().await.contains_key(&key));
+
+    for _ in 0..50 {
+        if seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|s| s.starts_with("second:"))
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(seen.lock().unwrap().contains(&"second:cancel".to_string()));
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/ask/dup-1"),
+            &cookie,
+            r#"{"answers":{"x":"y"}}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = tokio::time::timeout(std::time::Duration::from_secs(10), send)
+        .await
+        .expect("send stream did not finish")
+        .unwrap()
+        .unwrap();
+    body_str(resp.into_body()).await;
+    assert!(seen.lock().unwrap().contains(&"first:answers".to_string()));
+}
+
+#[tokio::test]
+async fn zombie_permission_slot_is_taken_over() {
+    let seen = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let (mut state, db) = app_state().await;
+    state.provider = Arc::new(DupRequestProvider {
+        seen: seen.clone(),
+        ask: false,
+    });
+    let app = devinorium::build_app(state.clone());
+    let cookie = login(&app).await;
+    let owner_id = db.get_user_by_username("owner").await.unwrap().unwrap().id;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "dup").await;
+
+    // A dead waiter still occupies the key; the next request with the same
+    // id must reclaim the slot instead of cancelling against a corpse.
+    let (dead_tx, dead_rx) = tokio::sync::oneshot::channel::<String>();
+    drop(dead_rx);
+    state.pending_permission_requests.lock().await.insert(
+        (tid.clone(), "dup-1".to_string()),
+        devinorium::PendingPermissionRequest {
+            user_id: owner_id,
+            nonce: 0,
+            sender: dead_tx,
+        },
+    );
+
+    let app2 = app.clone();
+    let cookie2 = cookie.clone();
+    let tid2 = tid.clone();
+    let send = tokio::spawn(async move {
+        let boundary = "----dupboundary";
+        let body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\ngo\r\n--{boundary}--\r\n"
+        );
+        app2.oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid2}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie2)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+    });
+
+    let key = (tid.clone(), "dup-1".to_string());
+    for _ in 0..50 {
+        let taken = state
+            .pending_permission_requests
+            .lock()
+            .await
+            .get(&key)
+            .is_some_and(|p| p.nonce != 0);
+        if taken {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(state
+        .pending_permission_requests
+        .lock()
+        .await
+        .get(&key)
+        .is_some_and(|p| p.nonce != 0));
+
+    for _ in 0..50 {
+        if seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|s| s.starts_with("second:"))
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(seen.lock().unwrap().contains(&"second:cancel".to_string()));
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/permission/dup-1"),
+            &cookie,
+            r#"{"option_id":"yes"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = tokio::time::timeout(std::time::Duration::from_secs(10), send)
+        .await
+        .expect("send stream did not finish")
+        .unwrap()
+        .unwrap();
+    body_str(resp.into_body()).await;
+    assert!(seen
+        .lock()
+        .unwrap()
+        .contains(&"first:allow:yes".to_string()));
 }
 
 #[tokio::test]
