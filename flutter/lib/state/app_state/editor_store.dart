@@ -231,19 +231,20 @@ mixin EditorStore on AppStateBase {
   /// absolute otherwise. Relative paths resolve against the thread's
   /// worktree when one is set, since that is the agent's working directory.
   String _agentEditedEditorPath(ThreadStore store, String raw) {
-    if (p.isAbsolute(raw)) {
+    final posix = p.Context(style: p.Style.posix);
+    if (posix.isAbsolute(raw)) {
       final id = _activeProjectId;
       if (id != null) {
         for (final proj in _projects) {
           if (proj.id != id) continue;
           try {
-            final rel = p.relative(raw, from: proj.path);
+            final rel = posix.relative(raw, from: proj.path);
             if (rel != '.' && !rel.startsWith('..')) return rel;
           } catch (_) {}
           break;
         }
       }
-      return p.normalize(raw);
+      return posix.normalize(raw);
     }
     final thread =
         store.detail.valueOrNull?.thread ?? _threadById(store.threadId);
@@ -251,9 +252,9 @@ mixin EditorStore on AppStateBase {
     if (thread?.envMode == 'worktree' &&
         worktree != null &&
         worktree.isNotEmpty) {
-      return p.normalize(p.join(worktree, raw));
+      return posix.normalize(posix.join(worktree, raw));
     }
-    return p.normalize(raw);
+    return posix.normalize(raw);
   }
 
   @override
