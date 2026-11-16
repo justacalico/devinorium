@@ -760,8 +760,16 @@ class _CreateProjectDialogState extends State<_CreateProjectDialog> {
   }
 }
 
-class _PermissionRequestDialog extends StatelessWidget {
+class _PermissionRequestDialog extends StatefulWidget {
   const _PermissionRequestDialog();
+
+  @override
+  State<_PermissionRequestDialog> createState() =>
+      _PermissionRequestDialogState();
+}
+
+class _PermissionRequestDialogState extends State<_PermissionRequestDialog> {
+  final _autoDeclinedIds = <String>{};
 
   @override
   Widget build(BuildContext context) {
@@ -774,7 +782,19 @@ class _PermissionRequestDialog extends StatelessWidget {
         if (req == null) return const SizedBox.shrink();
 
         if (req.options.isEmpty) {
-          state.respondToPermissionRequest(null);
+          // Nothing to choose: auto-decline after the frame so this does
+          // not fire a network call during build, and only once per
+          // request id so rebuilds while it is pending cannot re-fire.
+          if (_autoDeclinedIds.add(req.requestId)) {
+            final id = req.requestId;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              // The request may have been resolved and replaced since;
+              // only decline if this exact request is still pending.
+              if (state.pendingPermissionRequest?.requestId == id) {
+                state.respondToPermissionRequest(null);
+              }
+            });
+          }
           return const SizedBox.shrink();
         }
         final allowOnce = req.options.firstWhere(
