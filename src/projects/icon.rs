@@ -30,7 +30,7 @@ const ICON_CACHE_TTL: Duration = Duration::from_secs(60);
 /// Well-known icon locations relative to the project root, checked in order.
 /// `.ico` files sit below `.png`/`.svg` since Flutter can only render them
 /// when they embed a PNG.
-const ICON_CANDIDATES: &[&str] = &[
+pub(crate) const ICON_CANDIDATES: &[&str] = &[
     "favicon.svg",
     "favicon.png",
     "favicon.ico",
@@ -495,7 +495,6 @@ pub(crate) fn resolve_and_load(root: &Path) -> Option<(Vec<u8>, &'static str)> {
 fn load_icon(path: &Path) -> Option<(Vec<u8>, &'static str)> {
     use std::io::Read;
     let ext = path.extension()?.to_str()?;
-    let mime = mime_for_extension(ext)?;
     let meta = path.metadata().ok()?;
     if meta.len() == 0 || meta.len() > MAX_ICON_BYTES {
         return None;
@@ -506,16 +505,26 @@ fn load_icon(path: &Path) -> Option<(Vec<u8>, &'static str)> {
         .take(MAX_ICON_BYTES + 1)
         .read_to_end(&mut bytes)
         .ok()?;
+    decode_icon_bytes(ext, &bytes)
+}
+
+/// Turn icon bytes into a renderable `(bytes, mime)` pair. PNG content is
+/// always served as png regardless of the file extension, `.ico` containers
+/// yield their largest embedded PNG, and other extensions keep their bytes.
+/// Used by both the local loader and the remote icon relay so a remote
+/// `favicon.ico` does not reach the client as undecodable ICO data.
+pub(crate) fn decode_icon_bytes(ext: &str, bytes: &[u8]) -> Option<(Vec<u8>, &'static str)> {
+    let mime = mime_for_extension(ext)?;
     if bytes.is_empty() || bytes.len() as u64 > MAX_ICON_BYTES {
         return None;
     }
     if bytes.starts_with(&PNG_MAGIC) {
-        return Some((bytes, "image/png"));
+        return Some((bytes.to_vec(), "image/png"));
     }
     if ext.eq_ignore_ascii_case("ico") {
-        return extract_ico_png(&bytes).map(|png| (png, "image/png"));
+        return extract_ico_png(bytes).map(|png| (png, "image/png"));
     }
-    Some((bytes, mime))
+    Some((bytes.to_vec(), mime))
 }
 
 /// The PNG file signature; ICO entries embedding PNG payloads start with it.
@@ -890,6 +899,23 @@ mod tests {
         ico.extend_from_slice(&22u32.to_le_bytes());
         ico.extend_from_slice(&png);
         assert_eq!(extract_ico_png(&ico).unwrap(), png);
+    }
+
+    #[test]
+    fn decode_icon_bytes_unpacks_ico_like_local_load() {
+        // The remote icon relay goes through the same decoder, so a remote
+        // favicon.ico reaches the client as PNG just like a local one does.
+        let png = [PNG_MAGIC.as_slice(), b"fakepngdata"].concat();
+        let mut ico = vec![0, 0, 1, 0, 1, 0];
+        ico.extend_from_slice(&[32, 32, 0, 0, 1, 0, 32, 0]);
+        ico.extend_from_slice(&(png.len() as u32).to_le_bytes());
+        ico.extend_from_slice(&22u32.to_le_bytes());
+        ico.extend_from_slice(&png);
+        let (bytes, mime) = decode_icon_bytes("ico", &ico).unwrap();
+        assert_eq!(mime, "image/png");
+        assert_eq!(bytes, png);
+        assert!(decode_icon_bytes("png", b"raw-png-not-magic").is_some());
+        assert!(decode_icon_bytes("ico", b"not an ico").is_none());
     }
 
     #[test]

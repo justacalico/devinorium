@@ -819,28 +819,16 @@ async fn icon_remote(
     let Some(client) = crate::node_client::NodeClient::for_node(state, node) else {
         return crate::node_client::node_bad_gateway("node unreachable");
     };
-    const CANDIDATES: &[&str] = &[
-        "favicon.svg",
-        "favicon.png",
-        "favicon.ico",
-        "icon.svg",
-        "icon.png",
-        "logo.svg",
-        "logo.png",
-        "public/favicon.svg",
-        "public/favicon.png",
-        "public/icon.svg",
-        "public/icon.png",
-        "public/logo.svg",
-        "public/logo.png",
-    ];
-    let stats = client
+    const CANDIDATES: &[&str] = crate::projects::icon::ICON_CANDIDATES;
+    let Ok(stats) = client
         .fs_stat(
             Some(&project.path),
             &CANDIDATES.iter().map(|c| c.to_string()).collect::<Vec<_>>(),
         )
         .await
-        .unwrap_or_default();
+    else {
+        return crate::node_client::node_bad_gateway("node unreachable");
+    };
     for name in CANDIDATES {
         if !stats
             .get(*name)
@@ -849,8 +837,13 @@ async fn icon_remote(
         {
             continue;
         }
-        if let Some((mime, bytes)) = client.fs_read(&project.path, name).await {
+        if let Some((_mime, bytes)) = client.fs_read(&project.path, name).await {
             if bytes.len() <= 4 * 1024 * 1024 {
+                let ext = name.rsplit('.').next().unwrap_or_default();
+                let Some((bytes, mime)) = crate::projects::icon::decode_icon_bytes(ext, &bytes)
+                else {
+                    continue;
+                };
                 use base64::Engine;
                 return Json(serde_json::json!({
                     "mime": mime,
