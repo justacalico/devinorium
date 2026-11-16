@@ -141,7 +141,7 @@ pub(crate) fn prompt_with_machine_refs(
         Some(token) => {
             out.push_str(
                 "\n\nControl them through the Devinorium machine-control API on this host. \
-                 The token below covers only the referenced machines and stays valid until the server restarts.\n",
+                 The token below covers only the referenced machines and expires after a day or a server restart.\n",
             );
             out.push_str(&format!(
                 "Authorization: Bearer {token}\nBase URL: {base_url}\n"

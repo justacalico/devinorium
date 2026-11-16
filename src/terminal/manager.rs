@@ -22,6 +22,9 @@ pub struct TerminalManager {
     _cleanup_task: Arc<tokio::task::JoinHandle<()>>,
 }
 
+/// Most live PTY sessions one user may hold at once.
+const MAX_SESSIONS_PER_USER: usize = 32;
+
 struct TerminalManagerInner {
     sessions: HashMap<String, Arc<TerminalSession>>,
 }
@@ -81,6 +84,18 @@ impl TerminalManager {
         shell: Option<&str>,
         cwd: Option<PathBuf>,
     ) -> Result<Arc<TerminalSession>> {
+        // Check before opening the PTY and keep the guard across spawn so
+        // the count cannot be raced and a rejected spawn leaks no child.
+        let mut guard = self.inner.lock().await;
+        let per_user = guard
+            .sessions
+            .values()
+            .filter(|s| s.user_id == user_id)
+            .count();
+        if per_user >= MAX_SESSIONS_PER_USER {
+            return Err(anyhow::anyhow!("too many open terminal sessions"));
+        }
+
         let pty_system = NativePtySystem::default();
         let pair = pty_system
             .openpty(PtySize {
@@ -107,7 +122,6 @@ impl TerminalManager {
         let session =
             TerminalSession::spawn(id.clone(), thread_id, user_id, pair.master, writer, child)?;
 
-        let mut guard = self.inner.lock().await;
         guard.sessions.insert(id, session.clone());
         Ok(session)
     }

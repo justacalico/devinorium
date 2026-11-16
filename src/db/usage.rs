@@ -103,20 +103,13 @@ impl super::Db {
     ///
     /// Runs in `BEGIN IMMEDIATE` so the write lock is taken before the
     /// baseline read; a deferred transaction would let a concurrent recorder
-    /// read the same stale baseline and double-count a turn.
+    /// read the same stale baseline and double-count a turn. A real sqlx
+    /// transaction rolls back on drop, so an aborted caller cannot strand a
+    /// pooled connection mid-transaction.
     pub async fn record_turn_usage(&self, event: NewUsageEvent) -> anyhow::Result<()> {
-        let mut conn = self.pool().acquire().await?;
-        sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
-        match record_locked(&mut conn, &event).await {
-            Ok(()) => {
-                sqlx::query("COMMIT").execute(&mut *conn).await?;
-                Ok(())
-            }
-            Err(e) => {
-                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-                Err(e)
-            }
-        }
+        let mut tx = self.pool().begin_with("BEGIN IMMEDIATE").await?;
+        record_locked(&mut tx, &event).await?;
+        Ok(tx.commit().await?)
     }
 }
 

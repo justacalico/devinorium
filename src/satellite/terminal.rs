@@ -4,6 +4,7 @@
 //! input/resize/signal messages in — so the hub can relay a WebSocket
 //! without translation.
 
+use anyhow::Context as _;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -110,6 +111,9 @@ async fn handle_socket(
                         let _ = socket.send(axum::extract::ws::Message::Text(payload.to_string())).await;
                         break;
                     }
+                    // A slow reader drops output but the session lives on;
+                    // only a closed channel ends the socket.
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(_) => break,
                 }
             }
@@ -123,16 +127,27 @@ async fn handle_socket(
 }
 
 async fn handle_client_message(
-    session: &crate::terminal::session::TerminalSession,
+    session: &std::sync::Arc<crate::terminal::session::TerminalSession>,
     text: &str,
 ) -> anyhow::Result<()> {
     let msg: ClientMessage = serde_json::from_str(text)?;
     match msg {
-        ClientMessage::Input { data } => session.write_input(&data)?,
-        ClientMessage::Resize { cols, rows } => session.resize(cols, rows)?,
-        ClientMessage::Signal { sig } => session.send_signal(&sig)?,
+        ClientMessage::Input { data } => {
+            // PTY writes can block on backpressure (XOFF, a stopped
+            // shell); keep that wait off the async worker.
+            let session = session.clone();
+            tokio::task::spawn_blocking(move || session.write_input(&data))
+                .await
+                .context("pty writer task")?
+        }
+        ClientMessage::Resize { cols, rows } => session.resize(cols, rows),
+        ClientMessage::Signal { sig } => {
+            let session = session.clone();
+            tokio::task::spawn_blocking(move || session.send_signal(&sig))
+                .await
+                .context("pty signal task")?
+        }
     }
-    Ok(())
 }
 
 #[derive(Debug, Deserialize)]

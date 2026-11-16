@@ -63,8 +63,9 @@ impl TurnCursor {
 
 impl super::Db {
     pub async fn add_message(&self, new: NewMessage) -> anyhow::Result<MessageRow> {
-        let mut conn = self.pool().acquire().await?;
-        sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
+        // BEGIN IMMEDIATE takes the write lock before the seq read; a
+        // deferred transaction would race a second writer into reusing it.
+        let mut tx = self.pool().begin_with("BEGIN IMMEDIATE").await?;
 
         let result = sqlx::query_as::<_, MessageRow>(
             "INSERT INTO messages (thread_id, role, content, thinking, parts, attachments, model, client_message_id, turn_id, seq)
@@ -91,7 +92,7 @@ impl super::Db {
         .bind(&new.thread_id)
         .bind(&new.thread_id)
         .bind(&new.thread_id)
-        .fetch_one(&mut *conn)
+        .fetch_one(&mut *tx)
         .await;
 
         match result {
@@ -99,24 +100,15 @@ impl super::Db {
                 // seq tracks the row id rather than MAX(seq)+1 so deleted
                 // sequence numbers are never reused; a since_seq consumer
                 // still sees rows written after a tail truncation.
-                let seq_update = sqlx::query("UPDATE messages SET seq = id WHERE id = ?")
+                sqlx::query("UPDATE messages SET seq = id WHERE id = ?")
                     .bind(row.id)
-                    .execute(&mut *conn)
-                    .await;
-                match seq_update {
-                    Ok(_) => {
-                        row.seq = row.id;
-                        sqlx::query("COMMIT").execute(&mut *conn).await?;
-                        Ok(row)
-                    }
-                    Err(e) => {
-                        let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-                        Err(e.into())
-                    }
-                }
+                    .execute(&mut *tx)
+                    .await?;
+                row.seq = row.id;
+                tx.commit().await?;
+                Ok(row)
             }
             Err(e) => {
-                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
                 if is_unique_client_message_id_error(&e) {
                     Err(DuplicateClientMessageId.into())
                 } else {

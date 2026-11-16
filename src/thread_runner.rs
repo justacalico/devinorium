@@ -594,7 +594,7 @@ impl ThreadRunner {
             }
         });
 
-        *state.abort.lock().unwrap() = Some(handle.abort_handle());
+        *state.abort.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle.abort_handle());
         Ok(state)
     }
 
@@ -622,7 +622,7 @@ impl ThreadRunner {
         // Hard-abort the task after a grace period in case the agent
         // doesn't respond to cancellation. The handle stays on the run so
         // `wait_finished` can observe the task actually ending.
-        let abort_handle = run.abort.lock().unwrap().clone();
+        let abort_handle = run.abort.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let state = run.clone();
         let runs_for_cleanup = self.runs.clone();
         let id = thread_id.to_string();
@@ -667,7 +667,9 @@ impl ThreadRunner {
             if tokio::time::Instant::now() >= end {
                 for run in &runs {
                     if !run.task_finished() {
-                        if let Some(h) = run.abort.lock().unwrap().as_ref() {
+                        if let Some(h) =
+                            run.abort.lock().unwrap_or_else(|e| e.into_inner()).as_ref()
+                        {
                             h.abort();
                         }
                     }

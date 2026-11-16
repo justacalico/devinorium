@@ -26,7 +26,10 @@ impl super::Db {
         .bind(&hash)
         .bind(&device_id)
         .bind(user_id)
-        .bind(expires.to_rfc3339())
+        // Store the same `Z` format the expiry comparisons emit with
+        // strftime; `+00:00` sorts lower than `Z` and would expire a
+        // session up to a second early.
+        .bind(expires.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
         .bind(ip_hash)
         .bind(name)
         .fetch_one(self.pool())

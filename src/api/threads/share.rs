@@ -20,23 +20,51 @@ use crate::AppState;
 
 use super::{MessageOut, ThreadOut};
 
-/// Build the frozen transcript stored with a share.
+/// Build the frozen transcript stored with a share. Machine-grant tokens
+/// are scrubbed: the public page must never publish a live credential,
+/// even one that expires.
 fn snapshot_messages(rows: Vec<crate::db::MessageRow>) -> Vec<SharedMessage> {
     rows.into_iter()
         .map(|row| {
             let out = MessageOut::from(row);
             SharedMessage {
                 role: out.role,
-                content: out.content,
-                thinking: out.thinking,
-                parts: out.parts,
-                attachments: out.attachments,
+                content: crate::machine_grants::redact_tokens(&out.content),
+                thinking: out
+                    .thinking
+                    .map(|t| crate::machine_grants::redact_tokens(&t)),
+                parts: out
+                    .parts
+                    .into_iter()
+                    .filter_map(redact_part)
+                    .collect::<Vec<_>>(),
+                attachments: {
+                    let mut a = out.attachments;
+                    crate::machine_grants::redact_value(&mut a);
+                    a
+                },
                 model: out.model,
                 truncated: out.truncated,
                 created_at: out.created_at,
             }
         })
         .collect()
+}
+
+/// Scrub grant tokens out of a transcript part by round-tripping through
+/// JSON, so every current and future string field is covered. A part that
+/// cannot be faithfully rebuilt is dropped rather than risk leaking a
+/// live token.
+fn redact_part(part: crate::providers::MessagePart) -> Option<crate::providers::MessagePart> {
+    let mut v = serde_json::to_value(&part).ok()?;
+    crate::machine_grants::redact_value(&mut v);
+    match serde_json::from_value(v) {
+        Ok(p) => Some(p),
+        Err(e) => {
+            tracing::warn!("share snapshot dropped a message part it could not rebuild: {e}");
+            None
+        }
+    }
 }
 
 async fn owned_thread(
@@ -90,7 +118,7 @@ pub(super) async fn share(
             &share_id,
             &id,
             user.id,
-            &thread.title,
+            &crate::machine_grants::redact_tokens(&thread.title),
             &thread.provider_id,
             &snapshot,
         )
@@ -146,6 +174,7 @@ pub(super) async fn unshare(
 mod tests {
     use super::snapshot_messages;
     use crate::db::MessageRow;
+    use crate::providers::{MessagePart, ToolCallEvent};
 
     #[test]
     fn snapshot_keeps_renderable_fields_only() {
@@ -173,5 +202,43 @@ mod tests {
         assert!(json.get("client_message_id").is_none());
         assert!(json.get("thread_id").is_none());
         assert!(json.get("seq").is_none());
+    }
+
+    #[test]
+    fn snapshot_scrubs_machine_grant_tokens() {
+        let token = format!("mc_{}", "ab12".repeat(16));
+        let row = MessageRow {
+            id: 1,
+            thread_id: "th".into(),
+            role: "assistant".into(),
+            content: String::new(),
+            thinking: None,
+            parts: Some(
+                serde_json::to_string(&[MessagePart::tool_call(ToolCallEvent {
+                    id: "t1".into(),
+                    title: "Run".into(),
+                    kind: "shell".into(),
+                    status: "completed".into(),
+                    command: Some(format!("curl -H 'Authorization: Bearer {token}' http://x")),
+                    output: Some(format!("used {token}")),
+                    output_preview: None,
+                    changed_files: vec![],
+                    diffs: vec![],
+                })])
+                .unwrap(),
+            ),
+            attachments: "[]".into(),
+            model: "m".into(),
+            client_message_id: None,
+            created_at: "2024-01-01T00:00:00Z".into(),
+            turn_id: 1,
+            seq: 1,
+            content_length: 0,
+            parts_length: None,
+        };
+        let msgs = snapshot_messages(vec![row]);
+        let json = serde_json::to_string(&msgs).unwrap();
+        assert!(!json.contains(&token), "snapshot leaked grant token");
+        assert!(json.contains("mc_[redacted]"));
     }
 }

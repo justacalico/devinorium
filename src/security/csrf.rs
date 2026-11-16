@@ -28,7 +28,16 @@ pub async fn csrf_origin_check(
             | axum::http::Method::PATCH
             | axum::http::Method::DELETE
     );
-    if !is_state_change {
+    // WebSocket upgrades are GETs, so they fall outside the state-change
+    // check, but a cross-site page can still open one and ride ambient
+    // cookies. Apply the same origin rules so SameSite is not the only
+    // gate between a web page and a PTY.
+    let is_ws_upgrade = req
+        .headers()
+        .get(header::UPGRADE)
+        .and_then(|h| h.to_str().ok())
+        .is_some_and(|v| v.eq_ignore_ascii_case("websocket"));
+    if !is_state_change && !is_ws_upgrade {
         return next.run(req).await;
     }
 
@@ -44,6 +53,14 @@ pub async fn csrf_origin_check(
         .and_then(|h| h.to_str().ok())
         .unwrap_or("")
         .to_string();
+
+    // Browsers always send Origin on a WebSocket handshake, so a present
+    // and wrong Origin is a cross-site attempt. A missing Origin is a
+    // non-browser client and stays allowed; it would have been rejected
+    // above on a real state-changing request.
+    if is_ws_upgrade && !is_state_change && req.headers().get(header::ORIGIN).is_none() {
+        return next.run(req).await;
+    }
 
     // An explicitly allowed origin adds to the same-host check; it does
     // not replace it, or configuring one would lock out the server's own
@@ -235,5 +252,37 @@ mod tests {
         r.headers_mut()
             .insert(header::AUTHORIZATION, "abc123".parse().unwrap());
         assert!(!has_bearer_auth(r.headers()));
+    }
+
+    #[tokio::test]
+    async fn ws_upgrade_origin_checked_only_when_present() {
+        async fn check(origin: Option<&str>) -> StatusCode {
+            let mut r = req(Method::GET, origin, "example.com");
+            r.headers_mut()
+                .insert(header::UPGRADE, "websocket".parse().unwrap());
+            let app = axum::Router::new()
+                .route("/", axum::routing::get(|| async { StatusCode::OK }))
+                .layer(axum::middleware::from_fn(|req, next| {
+                    csrf_origin_check(None, req, next)
+                }));
+            tower::ServiceExt::oneshot(app, r).await.unwrap().status()
+        }
+        // No Origin: a non-browser client, allowed.
+        assert_eq!(check(None).await, StatusCode::OK);
+        // Same-host Origin: a real page on this server, allowed.
+        assert_eq!(check(Some("http://example.com")).await, StatusCode::OK);
+        // Foreign Origin: a cross-site page, rejected.
+        assert_eq!(check(Some("http://evil.com")).await, StatusCode::FORBIDDEN);
+        // Plain GETs without Origin still sail through.
+        let r = req(Method::GET, None, "example.com");
+        let app = axum::Router::new()
+            .route("/", axum::routing::get(|| async { StatusCode::OK }))
+            .layer(axum::middleware::from_fn(|req, next| {
+                csrf_origin_check(None, req, next)
+            }));
+        assert_eq!(
+            tower::ServiceExt::oneshot(app, r).await.unwrap().status(),
+            StatusCode::OK
+        );
     }
 }

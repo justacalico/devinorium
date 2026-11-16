@@ -148,24 +148,37 @@ async fn handle(msg: &Value, slot: &mut EngineSlot, factory: &EngineFactory) -> 
 
 /// The read/eval/write loop. Returns when stdin closes (the agent dropped
 /// the stdio pipe) or a hard IO error occurs.
-async fn serve<R, W>(reader: R, mut writer: W, factory: EngineFactory) -> anyhow::Result<()>
+async fn serve<R, W>(mut reader: R, mut writer: W, factory: EngineFactory) -> anyhow::Result<()>
 where
     R: tokio::io::AsyncBufRead + Unpin,
     W: tokio::io::AsyncWrite + Unpin,
 {
     let mut slot = EngineSlot { engine: None };
-    let mut lines = reader.lines();
-    while let Some(line) = lines.next_line().await? {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if line.len() > MAX_LINE_BYTES {
+    let mut raw = Vec::new();
+    while next_line_bounded(&mut reader, &mut raw).await? {
+        // Decide on the raw bytes: the cap cut may land mid-UTF-8, and a
+        // decode failure here must not kill the server.
+        if raw.len() > MAX_LINE_BYTES {
             let resp = rpc_error(&Value::Null, -32700, "message too large");
             let mut out = serde_json::to_vec(&resp)?;
             out.push(b'\n');
             writer.write_all(&out).await?;
             writer.flush().await?;
+            continue;
+        }
+        let line = match String::from_utf8(std::mem::take(&mut raw)) {
+            Ok(l) => l,
+            Err(_) => {
+                let resp = rpc_error(&Value::Null, -32700, "parse error");
+                let mut out = serde_json::to_vec(&resp)?;
+                out.push(b'\n');
+                writer.write_all(&out).await?;
+                writer.flush().await?;
+                continue;
+            }
+        };
+        let line = line.trim();
+        if line.is_empty() {
             continue;
         }
         let response = match serde_json::from_str::<Value>(line) {
@@ -180,6 +193,31 @@ where
         }
     }
     Ok(())
+}
+
+/// Fill `buf` with the next line including the newline, bounding memory
+/// to [`MAX_LINE_BYTES`] + 1 bytes at a time. An overlong line is still
+/// consumed fully so the stream stays aligned, but `buf` stops growing
+/// past the cap. Returns false at EOF with `buf` empty.
+async fn next_line_bounded<R: tokio::io::AsyncBufRead + Unpin>(
+    reader: &mut R,
+    buf: &mut Vec<u8>,
+) -> std::io::Result<bool> {
+    buf.clear();
+    loop {
+        let available = reader.fill_buf().await?;
+        if available.is_empty() {
+            return Ok(!buf.is_empty());
+        }
+        let newline = available.iter().position(|b| *b == b'\n');
+        let take = newline.map(|p| p + 1).unwrap_or(available.len());
+        let room = (MAX_LINE_BYTES + 1).saturating_sub(buf.len());
+        buf.extend_from_slice(&available[..take.min(room)]);
+        reader.consume(take);
+        if newline.is_some() {
+            return Ok(true);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -378,5 +416,45 @@ mod tests {
         assert_eq!(out[4]["result"]["resources"], json!([]));
         assert_eq!(out[5]["result"]["prompts"], json!([]));
         assert_eq!(out[6]["result"], json!({}));
+    }
+
+    #[tokio::test]
+    async fn overlong_line_is_capped_and_stream_recovers() {
+        let (factory, _) = fake_factory(vec![]);
+        let huge = "x".repeat(MAX_LINE_BYTES + 1024);
+        let script = format!("{huge}\n{{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"ping\"}}\n");
+        let out = run(&script, factory).await;
+        assert_eq!(out[0]["error"]["code"], -32700);
+        assert_eq!(out[0]["error"]["message"], "message too large");
+        assert_eq!(out[1]["result"], json!({}));
+    }
+
+    #[tokio::test]
+    async fn overlong_multibyte_line_does_not_kill_server() {
+        let (factory, _) = fake_factory(vec![]);
+        // 3 bytes per char: the cap cut lands mid-sequence.
+        let huge = "€".repeat(MAX_LINE_BYTES);
+        let script = format!("{huge}\n{{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"ping\"}}\n");
+        let out = run(&script, factory).await;
+        assert_eq!(out[0]["error"]["code"], -32700);
+        assert_eq!(out[1]["result"], json!({}));
+    }
+
+    #[tokio::test]
+    async fn invalid_utf8_line_is_a_parse_error_not_eof() {
+        let (factory, _) = fake_factory(vec![]);
+        let mut script = vec![0xffu8, 0xfe, b'\n'];
+        script.extend_from_slice(b"{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"ping\"}\n");
+        let reader = Cursor::new(script);
+        let mut writer: Vec<u8> = Vec::new();
+        serve(reader, &mut writer, factory).await.unwrap();
+        let out: Vec<Value> = String::from_utf8(writer)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(out[0]["error"]["code"], -32700);
+        assert_eq!(out[0]["error"]["message"], "parse error");
+        assert_eq!(out[1]["result"], json!({}));
     }
 }
