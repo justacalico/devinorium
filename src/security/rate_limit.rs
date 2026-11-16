@@ -52,6 +52,10 @@ pub enum EndpointClass {
     /// Spawning a new terminal session. PTY fork is expensive and a potential
     /// fork-bomb vector, so it costs more than a normal write.
     TerminalSpawn,
+    /// A browser-mcp frame post. Legitimate feeds push ~1.5/s continuously,
+    /// so the write rate would throttle a long run; token-gated like machine
+    /// control and priced well under it.
+    BrowserFeed,
 }
 
 impl EndpointClass {
@@ -63,6 +67,7 @@ impl EndpointClass {
             EndpointClass::AuthRead => 0.0,
             EndpointClass::UnauthProbe => 25.0,
             EndpointClass::TerminalSpawn => 20.0,
+            EndpointClass::BrowserFeed => 0.5,
         }
     }
 }
@@ -237,6 +242,16 @@ pub fn classify(req: &Request) -> EndpointClass {
     }
     if path == "/api/auth/logout" {
         return EndpointClass::AuthRead; // free
+    }
+
+    // Browser-mcp posts frames continuously with its own token; cheap so a
+    // long browsing run is not throttled. Without a bearer it is a probe.
+    if path == "/api/browser-feed" && *method == Method::POST {
+        return if has_bearer {
+            EndpointClass::BrowserFeed
+        } else {
+            EndpointClass::UnauthProbe
+        };
     }
 
     // Protected endpoints — cost depends on whether the caller appears

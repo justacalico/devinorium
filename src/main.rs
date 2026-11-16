@@ -223,6 +223,7 @@ async fn main() -> Result<()> {
         rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
         http_client: devinorium::federation::http_client(),
         remote_terminals: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        browser_feeds: devinorium::browser_feed::Feeds::default(),
     };
 
     // Turn run lifecycle transitions into pushes for closed clients.

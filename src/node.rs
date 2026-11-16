@@ -112,6 +112,11 @@ pub struct RunRequest {
     pub prompt: String,
     pub provider: WireProvider,
     pub options: WireSendOptions,
+    /// Token for the agent-browser frame feed. When set, the satellite
+    /// registers it and rewrites the builtin browser MCP env so the spawned
+    /// browser posts frames back to the node's own ingest endpoint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub browser_feed_token: Option<String>,
 }
 
 /// Final result of a provider turn, carried by the `done` event.

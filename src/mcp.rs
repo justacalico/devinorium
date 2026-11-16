@@ -103,6 +103,25 @@ pub fn inject_builtin_browser(servers: &mut Vec<McpServerConfig>, enabled: bool)
     servers.push(builtin_browser());
 }
 
+/// Point the builtin browser server at a frame feed: the spawned
+/// `devinorium browser-mcp` reads these env vars and streams viewport
+/// snapshots back to whoever executes the run. No-op when the builtin was
+/// not injected (name clash or web access off).
+pub fn attach_browser_feed(servers: &mut [McpServerConfig], feed_url: &str, token: &str) {
+    for s in servers.iter_mut() {
+        if s.name == BUILTIN_BROWSER_NAME && s.command.trim() == BUILTIN_BROWSER_COMMAND {
+            s.env.insert(
+                crate::browser_feed::FEED_URL_ENV.to_string(),
+                feed_url.to_string(),
+            );
+            s.env.insert(
+                crate::browser_feed::FEED_TOKEN_ENV.to_string(),
+                token.to_string(),
+            );
+        }
+    }
+}
+
 impl McpServerConfig {
     pub fn is_remote(&self) -> bool {
         matches!(self.transport.as_str(), "http" | "sse")
@@ -470,6 +489,40 @@ mod tests {
         inject_builtin_browser(&mut clash, true);
         assert_eq!(clash.len(), 1);
         assert_eq!(clash[0].command, "npx");
+    }
+
+    #[test]
+    fn attach_browser_feed_sets_env_only_on_builtin() {
+        let mut servers = vec![stdio("mine")];
+        attach_browser_feed(&mut servers, "http://127.0.0.1:1/api/browser-feed", "bf_x");
+        assert!(servers[0]
+            .env
+            .get(crate::browser_feed::FEED_URL_ENV)
+            .is_none());
+
+        inject_builtin_browser(&mut servers, true);
+        attach_browser_feed(&mut servers, "http://127.0.0.1:1/api/browser-feed", "bf_x");
+        let builtin = servers
+            .iter()
+            .find(|s| s.name == BUILTIN_BROWSER_NAME)
+            .unwrap();
+        assert_eq!(
+            builtin.env[crate::browser_feed::FEED_URL_ENV],
+            "http://127.0.0.1:1/api/browser-feed"
+        );
+        assert_eq!(builtin.env[crate::browser_feed::FEED_TOKEN_ENV], "bf_x");
+
+        // The env survives the provider conversions the run goes through.
+        let devin = builtin.to_devin_entry();
+        assert_eq!(devin["env"][crate::browser_feed::FEED_TOKEN_ENV], "bf_x");
+        let caps = McpCapabilities::default();
+        let Some(McpServer::Stdio(s)) = builtin.to_acp(&caps) else {
+            panic!("expected stdio")
+        };
+        assert!(s
+            .env
+            .iter()
+            .any(|e| e.name == crate::browser_feed::FEED_TOKEN_ENV && e.value == "bf_x"));
     }
 
     #[test]

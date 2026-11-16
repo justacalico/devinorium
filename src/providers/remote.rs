@@ -105,6 +105,7 @@ impl RemoteProvider {
                 options,
                 self.provider_id != crate::providers::acp::AgentKind::Devin.id(),
             ),
+            browser_feed_token: options.browser_feed_token.clone(),
         };
 
         let resp = self

@@ -523,6 +523,27 @@ pub(crate) async fn call_provider(
         Vec::new()
     };
     crate::mcp::inject_builtin_browser(&mut mcp_servers, user.is_owner && user.web_access_enabled);
+    // When the builtin browser is in play, mint (or reuse) the thread's
+    // feed token. Local runs get the hub's ingest endpoint in the MCP env;
+    // node-bound runs pass the token over the wire so the satellite can
+    // point the browser at its own endpoint — it is the one spawning it.
+    let mut browser_feed_token = None;
+    if mcp_servers.iter().any(|s| {
+        s.enabled
+            && s.name == crate::mcp::BUILTIN_BROWSER_NAME
+            && s.command.trim() == crate::mcp::BUILTIN_BROWSER_COMMAND
+    }) {
+        let feed = state.browser_feeds.for_thread(&thread.id);
+        if node.is_some() {
+            browser_feed_token = Some(feed.token.clone());
+        } else {
+            crate::mcp::attach_browser_feed(
+                &mut mcp_servers,
+                &format!("{}/api/browser-feed", state.agent_base_url()),
+                &feed.token,
+            );
+        }
+    }
     // User-scope plugin `.mcp.json` servers merge under the same owner
     // gate: a stdio entry is code execution as the server user. Plugins on
     // a satellite merge theirs node-side, gated by the wire flag.
@@ -552,6 +573,7 @@ pub(crate) async fn call_provider(
             .and_then(|v| u64::try_from(v).ok())
             .filter(|v| *v > 0),
         mcp_servers,
+        browser_feed_token,
     };
 
     // A leading `/skill args` reaches the Devin CLI verbatim - its ACP

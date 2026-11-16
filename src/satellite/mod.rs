@@ -11,6 +11,7 @@
 //! of issued tokens, so a restart does not break existing pairings. The
 //! pairing code itself rotates on every boot and is never persisted.
 
+mod browser_feed;
 mod clone;
 mod files;
 mod git;
@@ -58,12 +59,22 @@ pub struct SatelliteState {
     pub home_dir: PathBuf,
     pub node_name: String,
     pub max_body_bytes: usize,
+    /// Configured bind host/port, used to point browser-mcp back at this
+    /// process's own ingest endpoint. `bound_addr` wins once set since a
+    /// port of 0 resolves to a real one only after bind.
+    bind_host: String,
+    bind_port: u16,
+    bound_addr: std::sync::OnceLock<std::net::SocketAddr>,
     /// This boot's pairing code, shown in the startup banner. Consumed by
     /// the first successful pair; a new code needs a restart.
     pub pairing_code: RwLock<String>,
     pub node_id: String,
     /// SHA-256 hashes of issued node tokens.
     tokens: RwLock<std::collections::HashSet<String>>,
+    /// Live browser feeds keyed by the hub-minted feed token from each run
+    /// request. browser-mcp posts in with the token; the hub's viewer
+    /// tunnel subscribes with it.
+    browser_feeds: Mutex<HashMap<String, Arc<crate::browser_feed::BrowserFeed>>>,
     /// Runs in flight, keyed by hub-supplied run id.
     pub runs: Mutex<HashMap<String, NodeRun>>,
     /// Open permission/ask requests awaiting a hub decision.
@@ -130,6 +141,10 @@ impl SatelliteState {
             pairing_code: RwLock::new(generate_pairing_code()),
             node_id,
             tokens: RwLock::new(tokens),
+            bind_host: cfg.host.clone(),
+            bind_port: cfg.port,
+            bound_addr: std::sync::OnceLock::new(),
+            browser_feeds: Mutex::new(HashMap::new()),
             runs: Mutex::new(HashMap::new()),
             pending: Mutex::new(HashMap::new()),
             git: Arc::new(crate::git::GitService::new()),
@@ -188,6 +203,73 @@ impl SatelliteState {
         self.tokens.write().await.insert(hash_node_token(&token));
         self.persist().await;
         token
+    }
+
+    /// Record the address the listener actually bound.
+    pub fn set_bound_addr(&self, addr: std::net::SocketAddr) {
+        let _ = self.bound_addr.set(addr);
+    }
+
+    /// The feed registered for an ingest/viewer token, if any.
+    pub async fn browser_feed(&self, token: &str) -> Option<Arc<crate::browser_feed::BrowserFeed>> {
+        self.browser_feeds
+            .lock()
+            .await
+            .values()
+            .find(|f| constant_time_eq::constant_time_eq(f.token.as_bytes(), token.as_bytes()))
+            .cloned()
+    }
+
+    /// Get or create the feed for a run's browser token. Feeds nobody
+    /// watches are evicted past the table cap.
+    pub async fn register_browser_feed(
+        &self,
+        token: &str,
+    ) -> Arc<crate::browser_feed::BrowserFeed> {
+        let mut map = self.browser_feeds.lock().await;
+        if let Some(feed) = map.get(token) {
+            return feed.clone();
+        }
+        if map.len() >= 256 {
+            map.retain(|_, f| f.active());
+        }
+        let feed = crate::browser_feed::BrowserFeed::with_token(token);
+        map.insert(token.to_string(), feed.clone());
+        feed
+    }
+
+    /// The ingest URL the spawned browser-mcp should post frames to: this
+    /// node's own listener, mapped to loopback when bound to a wildcard.
+    pub fn browser_feed_url(&self) -> String {
+        let (host, port) = match self.bound_addr.get() {
+            Some(addr) => {
+                let ip = addr.ip();
+                (
+                    if ip.is_unspecified() {
+                        "127.0.0.1".to_string()
+                    } else {
+                        ip.to_string()
+                    },
+                    addr.port(),
+                )
+            }
+            None => {
+                let raw = self.bind_host.trim_start_matches('[').trim_end_matches(']');
+                let host = match raw.parse::<std::net::IpAddr>() {
+                    Ok(ip) if ip.is_unspecified() => "127.0.0.1".to_string(),
+                    _ => raw.to_string(),
+                };
+                (host, self.bind_port)
+            }
+        };
+        if host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_ipv6())
+        {
+            format!("http://[{host}]:{port}/api/node/browser-feed")
+        } else {
+            format!("http://{host}:{port}/api/node/browser-feed")
+        }
     }
 }
 
@@ -260,13 +342,21 @@ pub fn build_app(state: Arc<SatelliteState>) -> Router {
         .merge(git::router())
         .merge(terminal::router())
         .merge(clone::router())
+        .merge(browser_feed::router())
         .route_layer(from_fn_with_state(state.clone(), node_auth))
         .route_layer(RequestBodyLimitLayer::new(state.max_body_bytes));
+
+    // Frame posts come from the spawned browser-mcp with only the feed
+    // token, so the route skips node_auth and gets a frame-sized body cap.
+    let browser_feed = browser_feed::ingest_router().route_layer(RequestBodyLimitLayer::new(
+        crate::browser_feed::MAX_POST_BODY_BYTES,
+    ));
 
     Router::new()
         .merge(public)
         .merge(protected)
         .merge(runs)
+        .merge(browser_feed)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -380,6 +470,7 @@ pub async fn run(cfg: crate::config::Config) -> anyhow::Result<()> {
     let bind = cfg.bind_addr();
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     let addr = listener.local_addr()?;
+    state.set_bound_addr(addr);
 
     let code = state.pairing_code.read().await.clone();
     let name = &state.node_name;
@@ -430,6 +521,10 @@ mod tests {
                 Duration::from_secs(60),
                 Duration::from_secs(60),
             ),
+            bind_host: "127.0.0.1".into(),
+            bind_port: 0,
+            bound_addr: std::sync::OnceLock::new(),
+            browser_feeds: Mutex::new(HashMap::new()),
             state_file: dir.path().join("state.json"),
             pair_attempts: Mutex::new(HashMap::new()),
         })

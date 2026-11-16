@@ -269,6 +269,7 @@ fn send_options(
         cancel_signal: Some(cancel),
         max_output_tokens: wire.max_output_tokens,
         mcp_servers: wire.mcp_servers,
+        browser_feed_token: None,
     })
 }
 
@@ -287,6 +288,13 @@ async fn drive(
     pending_ids: Arc<StdMutex<Vec<String>>>,
 ) {
     let mut wire = req.options;
+    // A hub-minted browser feed token means this run may stream its agent
+    // browser back: register it and point the builtin server at this node's
+    // own ingest endpoint, since the browser spawns here, not on the hub.
+    if let Some(token) = req.browser_feed_token.as_deref().filter(|t| !t.is_empty()) {
+        state.register_browser_feed(token).await;
+        crate::mcp::attach_browser_feed(&mut wire.mcp_servers, &state.browser_feed_url(), token);
+    }
     let working_dir = wire.working_dir.clone();
     // Hooks and plugin MCP merge are owner-trust features; the hub sends
     // the flag so the satellite applies the same gate it cannot see.

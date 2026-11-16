@@ -105,6 +105,7 @@ async fn make_app_on(dev_mode: bool, host: &str) -> (axum::Router, db::Db) {
             std::collections::HashMap::new(),
         )),
         rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
+        browser_feeds: devinorium::browser_feed::Feeds::default(),
     };
     (devinorium::build_app(state), database)
 }

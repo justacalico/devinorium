@@ -80,6 +80,7 @@ async fn provider_start_and_send_text() {
                 cancel_signal: None,
                 max_output_tokens: None,
                 mcp_servers: Vec::new(),
+                browser_feed_token: None,
                 attachments: vec![],
             },
         })
@@ -106,6 +107,7 @@ async fn provider_start_and_send_text() {
                 cancel_signal: None,
                 max_output_tokens: None,
                 mcp_servers: Vec::new(),
+                browser_feed_token: None,
                 attachments: vec![],
             },
         })
@@ -154,6 +156,7 @@ async fn provider_start_with_image_attachment() {
                 cancel_signal: None,
                 max_output_tokens: None,
                 mcp_servers: Vec::new(),
+                browser_feed_token: None,
                 attachments: vec![providers::Attachment {
                     filename: "pixel.png".to_string(),
                     mime: "image/png".to_string(),
@@ -250,6 +253,7 @@ async fn provider_grok_start() {
                 cancel_signal: None,
                 max_output_tokens: None,
                 mcp_servers: Vec::new(),
+                browser_feed_token: None,
                 attachments: vec![],
             },
         })
@@ -297,6 +301,7 @@ async fn provider_gemini_start() {
                 cancel_signal: None,
                 max_output_tokens: None,
                 mcp_servers: Vec::new(),
+                browser_feed_token: None,
                 attachments: vec![],
             },
         })
@@ -358,6 +363,7 @@ async fn provider_acp_start() {
                 cancel_signal: None,
                 max_output_tokens: None,
                 mcp_servers: Vec::new(),
+                browser_feed_token: None,
                 attachments: vec![],
             },
         })
@@ -394,6 +400,7 @@ async fn provider_generates_code() {
                 cancel_signal: None,
                 max_output_tokens: None,
                 mcp_servers: Vec::new(),
+                browser_feed_token: None,
                 attachments: vec![],
             },
         })
@@ -435,6 +442,7 @@ async fn provider_writes_file_in_working_dir() {
                 cancel_signal: None,
                 max_output_tokens: None,
                 mcp_servers: Vec::new(),
+                browser_feed_token: None,
                 attachments: vec![],
             },
         })
@@ -494,6 +502,7 @@ async fn provider_accepts_all_permission_modes() {
                     cancel_signal: None,
                     max_output_tokens: None,
                     mcp_servers: Vec::new(),
+                    browser_feed_token: None,
                     attachments: vec![],
                 },
             })
@@ -536,6 +545,7 @@ async fn provider_accepts_text_attachment() {
                 cancel_signal: None,
                 max_output_tokens: None,
                 mcp_servers: Vec::new(),
+                browser_feed_token: None,
                 attachments: vec![providers::Attachment {
                     filename: "secret.txt".to_string(),
                     mime: "text/plain".to_string(),
