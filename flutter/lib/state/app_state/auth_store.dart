@@ -197,19 +197,22 @@ mixin AuthStore on AppStateBase {
         notifyListeners();
         return prompt;
       }
+      // Web auth rides the HttpOnly session cookie; ApiClient.setToken is a
+      // no-op here, so the bearer token is never used. Keep it out of the
+      // profile entirely so it cannot end up in localStorage.
       final active = multiServerState.activeProfile;
       final updated = active != null
           ? active.copyWith(
               username: res.username.isNotEmpty
                   ? res.username
                   : username.trim(),
-              token: res.token,
+              token: '',
             )
           : ServerProfile(
               id: 'web',
               label: 'web',
               baseUrl: '',
-              token: res.token,
+              token: '',
               username: res.username.isNotEmpty
                   ? res.username
                   : username.trim(),

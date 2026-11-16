@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'server_profile.dart';
@@ -85,7 +86,7 @@ class ServerRegistry {
   Future<void> saveProfiles(List<ServerProfile> profiles) async {
     final prefs = await _preferences;
     final json = profiles
-        .map((p) => (p.isLocal ? p.copyWith(token: '') : p).toJson())
+        .map((p) => ((p.isLocal || kIsWeb) ? p.copyWith(token: '') : p).toJson())
         .toList();
     await prefs.setString(_serversKey, jsonEncode(json));
   }
