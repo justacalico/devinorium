@@ -13592,7 +13592,9 @@ fn session_cookie(resp: &reqwest::Response) -> String {
 async fn terminal_create_kill_and_ws_round_trip() {
     // Pin a bare POSIX shell: fancier shells (e.g. fish) run terminal feature
     // negotiation at startup, which delays the prompt and can swallow early
-    // input — same reason terminal_pwd_shows pins SHELL.
+    // input — same reason terminal_pwd_shows pins SHELL. SHELL is process
+    // global, so all writers must hold the lock for their whole session.
+    let _shell = SHELL_LOCK.lock().await;
     std::env::set_var("SHELL", "/bin/sh");
     let (app, _db) = make_app().await;
     let (port, shutdown) = spawn_router(app).await;
@@ -13837,6 +13839,7 @@ async fn terminal_pwd_shows(port: u16, origin: &str, cookie: &str, tid: &str, wa
     // Pin a bare POSIX shell: fancier shells (e.g. fish) run terminal feature
     // negotiation at startup, which delays the prompt and can swallow early
     // input, making the cwd check depend on the host's $SHELL.
+    let _shell = SHELL_LOCK.lock().await;
     std::env::set_var("SHELL", "/bin/sh");
     let client = reqwest::Client::new();
     let resp = client
@@ -16596,6 +16599,7 @@ async fn thread_stop_during_rate_limit_wait_cancels_retry() {
     assert!(run.contains("\"rate_limit\":null"), "run: {run}");
 }
 
+static SHELL_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static LONG_WAIT_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 /// Fails once with a far-future reset so the only way out is a stop.
