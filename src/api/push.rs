@@ -90,6 +90,15 @@ async fn subscribe(
         )
             .into_response();
     }
+    // The host must be a public push relay: an endpoint pointing into the
+    // server's own network would turn every push into an internal probe.
+    if !crate::push::endpoint_host_is_public(endpoint).await {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("invalid endpoint")),
+        )
+            .into_response();
+    }
     // p256dh is the uncompressed 65-byte P-256 point (0x04 || X || Y); auth
     // is a short secret.
     let p256dh = req.keys.p256dh.trim_end_matches('=');
