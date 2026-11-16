@@ -27,6 +27,9 @@ class MultiServerState extends ChangeNotifier {
   /// Load saved profiles and build an [ApiService] for each. On web, an
   /// implicit same-origin profile is created if none exists.
   Future<void> loadFromRegistry() async {
+    for (final api in _apis.values) {
+      api.dispose();
+    }
     _apis.clear();
     _profiles.clear();
     _activeServerId = null;
