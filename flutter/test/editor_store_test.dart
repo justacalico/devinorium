@@ -6,9 +6,12 @@ import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:devinorium_frontend/views/editor/editor_tab_bar.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:provider/provider.dart';
 
 http.Response _json(int status, Object body) => http.Response(
   jsonEncode(body),
@@ -880,6 +883,92 @@ void main() {
       expect(call, 3);
       expect(state.activeEditorTab?.text, 'v3');
       expect(state.activeEditorTab?.loading, isFalse);
+    });
+  });
+
+  group('Editor tab bar', () {
+    testWidgets('save-and-close keeps the tab when its own save failed', (
+      tester,
+    ) async {
+      final client = _clientFor([
+        _json(200, _fileJson('/x/a.txt', 'a')),
+        _json(200, _fileJson('/x/b.txt', 'b')),
+        _json(500, {'error': 'disk full'}),
+      ]);
+      final state = AppState.test(
+        api: _serviceFor(client),
+        projects: [project],
+        activeProjectId: 1,
+      );
+      await state.openEditorFile('/x/a.txt');
+      await state.openEditorFileNewTab('/x/b.txt');
+      state.setEditorTabText('/x/b.txt', 'changed');
+      state.setActiveEditorPath('/x/a.txt');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const Scaffold(body: EditorTabBar()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final closeIcon = find.descendant(
+        of: find.widgetWithText(GestureDetector, '\u2022 b.txt'),
+        matching: find.byIcon(Icons.close),
+      );
+      await tester.tap(closeIcon);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(state.editorTabs.map((t) => t.path), contains('/x/b.txt'));
+      expect(
+        state.editorTabs.firstWhere((t) => t.path == '/x/b.txt').dirty,
+        isTrue,
+      );
+    });
+
+    testWidgets('save-and-close removes the tab when its save succeeds', (
+      tester,
+    ) async {
+      final client = _clientFor([
+        _json(200, _fileJson('/x/a.txt', 'a')),
+        _json(200, _fileJson('/x/b.txt', 'b')),
+        _json(200, _fileJson('/x/b.txt', 'changed')),
+      ]);
+      final state = AppState.test(
+        api: _serviceFor(client),
+        projects: [project],
+        activeProjectId: 1,
+      );
+      await state.openEditorFile('/x/a.txt');
+      await state.openEditorFileNewTab('/x/b.txt');
+      state.setEditorTabText('/x/b.txt', 'changed');
+      state.setActiveEditorPath('/x/a.txt');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const Scaffold(body: EditorTabBar()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final closeIcon = find.descendant(
+        of: find.widgetWithText(GestureDetector, '\u2022 b.txt'),
+        matching: find.byIcon(Icons.close),
+      );
+      await tester.tap(closeIcon);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(state.editorTabs.map((t) => t.path), isNot(contains('/x/b.txt')));
     });
   });
 }

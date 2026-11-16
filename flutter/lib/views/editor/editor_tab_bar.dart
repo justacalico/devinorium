@@ -196,7 +196,10 @@ class _Tab extends StatelessWidget {
             onPressed: () async {
               Navigator.of(dialogContext).pop(false);
               await state.saveEditorTab(tab.path);
-              if (state.activeEditorTab?.dirty == false) {
+              final saved = state.editorTabs
+                  .where((t) => t.path == tab.path)
+                  .firstOrNull;
+              if (saved != null && !saved.dirty && !saved.saving) {
                 state.closeEditorTab(tab.path);
               }
             },
