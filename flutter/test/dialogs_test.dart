@@ -383,6 +383,45 @@ void main() {
     });
   });
 
+  testWidgets('typing a path enables create without picking a folder', (
+    tester,
+  ) async {
+    final client = _clientFor([_json(200, [])]);
+    final state = AppState.test(
+      api: ApiService(client: client),
+      dialog: DialogKind.newProject,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChangeNotifierProvider<AppState>.value(
+          value: state,
+          child: const DialogLayer(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final create = find.widgetWithText(FilledButton, 'Create');
+    expect(tester.widget<FilledButton>(create).onPressed, isNull);
+
+    final nameField = find.byWidgetPredicate(
+      (w) => w is TextField && w.decoration?.labelText == 'Name',
+    );
+    await tester.enterText(nameField, 'proj');
+    await tester.pump();
+
+    // Typing directly into the picker's path field must enable Create;
+    // the picker shares the dialog's controller.
+    final pathField = find.byWidgetPredicate(
+      (w) => w is TextField && w.decoration?.labelText == 'Path',
+    );
+    await tester.enterText(pathField, '/tmp/proj');
+    await tester.pump();
+
+    expect(tester.widget<FilledButton>(create).onPressed, isNotNull);
+  });
+
   group('CreateProjectDialog', () {
     testWidgets('create new source opens the create project form', (
       tester,

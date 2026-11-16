@@ -857,6 +857,54 @@ void main() {
     expect(api.reorderedProjectIds.single, orderedEquals([2, 1, 3]));
   });
 
+  testWidgets('Long press drag moves a project to the bottom', (tester) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p1', path: '/x/1', createdAt: '', updatedAt: ''),
+        Project(id: 2, name: 'p2', path: '/x/2', createdAt: '', updatedAt: ''),
+        Project(id: 3, name: 'p3', path: '/x/3', createdAt: '', updatedAt: ''),
+      ],
+      selectedProjectGroupId: null,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    // onReorderItem already reports newIndex adjusted for the removed
+    // item, so dropping p1 below p3 must land it last, not mid-list.
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('p1')),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    final tileBottom = tester.getBottomLeft(
+      find.ancestor(
+        of: find.text('p3'),
+        matching: find.byType(ReorderableDelayedDragStartListener),
+      ),
+    );
+    await gesture.moveTo(tester.getCenter(find.text('p3')));
+    await tester.pump();
+    await gesture.moveTo(tileBottom + const Offset(0, 4));
+    await gesture.moveTo(tileBottom + const Offset(0, 40));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(api.reorderedProjectIds, hasLength(1));
+    expect(api.reorderedProjectIds.single, orderedEquals([2, 3, 1]));
+  });
+
   testWidgets('Project drag is disabled while searching', (tester) async {
     final state = AppState.test(
       user: User(

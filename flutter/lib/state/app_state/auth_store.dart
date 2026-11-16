@@ -425,20 +425,22 @@ mixin AuthStore on AppStateBase {
   }
 
   @override
-  Future<void> createUser({
+  Future<bool> createUser({
     required String username,
     required String password,
   }) async {
     final gen = _serverSeq;
     try {
       await hubApi.createUser(username: username, password: password);
-      if (gen != _serverSeq) return;
+      if (gen != _serverSeq) return false;
       _globalError = '';
       await loadUsers();
+      return true;
     } catch (e) {
-      if (gen != _serverSeq) return;
+      if (gen != _serverSeq) return false;
       _globalError = '$e';
       notifyListeners();
+      return false;
     }
   }
 

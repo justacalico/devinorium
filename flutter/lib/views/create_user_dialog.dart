@@ -18,6 +18,7 @@ class _CreateUserDialogState extends State<CreateUserDialog> {
   final _password = TextEditingController();
   bool _obscure = true;
   bool _creating = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -28,15 +29,24 @@ class _CreateUserDialogState extends State<CreateUserDialog> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _creating = true);
-    await widget.state.createUser(
+    setState(() {
+      _creating = true;
+      _error = null;
+    });
+    final ok = await widget.state.createUser(
       username: _username.text,
       password: _password.text,
     );
-    if (mounted) {
-      setState(() => _creating = false);
+    if (!mounted) return;
+    if (ok) {
       Navigator.of(context).pop();
+      return;
     }
+    setState(() {
+      _creating = false;
+      _error = widget.state.globalError;
+      if (_error!.isEmpty) _error = null;
+    });
   }
 
   @override
@@ -84,6 +94,13 @@ class _CreateUserDialogState extends State<CreateUserDialog> {
               },
               onFieldSubmitted: (_) => _submit(),
             ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
           ],
         ),
       ),

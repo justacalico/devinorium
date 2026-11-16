@@ -423,7 +423,31 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    // Typing a path in the picker's text field must refresh the Create
+    // button's enabled state, not just the picker-driven selection.
+    _nameController.addListener(_rebuild);
+    _pathController.addListener(_rebuild);
+  }
+
+  var _rebuildQueued = false;
+
+  void _rebuild() {
+    // The picker writes to the shared controller while it is still being
+    // built, so the rebuild has to wait for the frame to finish.
+    if (_rebuildQueued) return;
+    _rebuildQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _rebuildQueued = false;
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
   void dispose() {
+    _nameController.removeListener(_rebuild);
+    _pathController.removeListener(_rebuild);
     _nameController.dispose();
     _pathController.dispose();
     super.dispose();
@@ -448,28 +472,19 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
     }
 
     setState(() => _submitting = true);
-    try {
-      final state = context.read<AppState>();
-      await state.createProject(
-        name: name,
-        path: path,
-        nodeId: _validNodeId(state, _nodeId),
-      );
-      if (mounted) {
-        setState(() => _submitting = false);
-      }
-      // Close whichever add-project dialog is showing: the user may have
-      // navigated back to the source picker while the create was in flight.
-      if (state.globalError.isEmpty) {
-        state.closeDialog();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _submitting = false;
-          _error = '$e';
-        });
-      }
+    final state = context.read<AppState>();
+    final ok = await state.createProject(
+      name: name,
+      path: path,
+      nodeId: _validNodeId(state, _nodeId),
+    );
+    if (mounted) {
+      setState(() => _submitting = false);
+    }
+    // Close whichever add-project dialog is showing: the user may have
+    // navigated back to the source picker while the create was in flight.
+    if (ok) {
+      state.closeDialog();
     }
   }
 
@@ -607,16 +622,16 @@ class _CreateProjectDialogState extends State<_CreateProjectDialog> {
 
     setState(() => _submitting = true);
     final state = context.read<AppState>();
-    try {
-      await state.createNewProject(name, nodeId: _validNodeId(state, _nodeId));
-    } finally {
-      if (mounted) {
-        setState(() => _submitting = false);
-      }
+    final ok = await state.createNewProject(
+      name,
+      nodeId: _validNodeId(state, _nodeId),
+    );
+    if (mounted) {
+      setState(() => _submitting = false);
     }
     // Close whichever add-project dialog is showing: the user may have
     // navigated back to the source picker while the create was in flight.
-    if (state.globalError.isEmpty) {
+    if (ok) {
       state.closeDialog();
     }
   }
@@ -745,8 +760,16 @@ class _CreateProjectDialogState extends State<_CreateProjectDialog> {
   }
 }
 
-class _PermissionRequestDialog extends StatelessWidget {
+class _PermissionRequestDialog extends StatefulWidget {
   const _PermissionRequestDialog();
+
+  @override
+  State<_PermissionRequestDialog> createState() =>
+      _PermissionRequestDialogState();
+}
+
+class _PermissionRequestDialogState extends State<_PermissionRequestDialog> {
+  final _autoDeclinedIds = <String>{};
 
   @override
   Widget build(BuildContext context) {
@@ -759,7 +782,19 @@ class _PermissionRequestDialog extends StatelessWidget {
         if (req == null) return const SizedBox.shrink();
 
         if (req.options.isEmpty) {
-          state.respondToPermissionRequest(null);
+          // Nothing to choose: auto-decline after the frame so this does
+          // not fire a network call during build, and only once per
+          // request id so rebuilds while it is pending cannot re-fire.
+          if (_autoDeclinedIds.add(req.requestId)) {
+            final id = req.requestId;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              // The request may have been resolved and replaced since;
+              // only decline if this exact request is still pending.
+              if (state.pendingPermissionRequest?.requestId == id) {
+                state.respondToPermissionRequest(null);
+              }
+            });
+          }
           return const SizedBox.shrink();
         }
         final allowOnce = req.options.firstWhere(

@@ -1218,7 +1218,8 @@ class _GitPanelState extends State<GitPanel> {
   void _openChange(BuildContext context, AppState state, GitChangeEntry entry) {
     final toplevel = state.gitPanelRepoInfo?.toplevel;
     if (toplevel == null || toplevel.isEmpty) return;
-    final path = p.join(toplevel, entry.path);
+    // Git paths are posix-separated even on a Windows client.
+    final path = p.Context(style: p.Style.posix).join(toplevel, entry.path);
     if (state.appMode == AppMode.editor) {
       unawaited(state.openEditorFile(path));
       state.closeSidebar();

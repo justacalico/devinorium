@@ -132,7 +132,7 @@ mixin ProjectStore on AppStateBase {
   }
 
   @override
-  Future<void> createProject({
+  Future<bool> createProject({
     required String name,
     required String path,
     String? nodeId,
@@ -140,20 +140,20 @@ mixin ProjectStore on AppStateBase {
     () => api.createProject(name: name, path: path, nodeId: nodeId),
   );
   @override
-  Future<void> createNewProject(String name, {String? nodeId}) =>
+  Future<bool> createNewProject(String name, {String? nodeId}) =>
       _addProject(() => api.createNewProject(name: name, nodeId: nodeId));
-  Future<void> _addProject(Future<Project> Function() create) async {
+  Future<bool> _addProject(Future<Project> Function() create) async {
     _globalError = '';
     notifyListeners();
     if (hasDirtyEditorTabs) {
       _globalError = appL10n.editorUnsavedNewProject;
       notifyListeners();
-      return;
+      return false;
     }
     final gen = _serverSeq;
     try {
       final p = await create();
-      if (gen != _serverSeq) return;
+      if (gen != _serverSeq) return false;
       _projects = [..._projects, p];
       // A project created while a group filter is active joins that group,
       // otherwise it would be invisible in the sidebar. The uncategorized
@@ -161,6 +161,7 @@ mixin ProjectStore on AppStateBase {
       final gid = _selectedProjectGroupId;
       if (gid != null && gid != kUncategorizedProjectGroupId) {
         await setProjectGroup(p.id, gid);
+        if (gen != _serverSeq) return false;
       }
       if (hasDirtyEditorTabs) {
         _globalError = appL10n.editorUnsavedNewProject;
@@ -171,10 +172,12 @@ mixin ProjectStore on AppStateBase {
       }
       _page = MainPage.threads;
       await refreshThreadsAndGroups();
+      return true;
     } catch (e) {
-      if (gen != _serverSeq) return;
+      if (gen != _serverSeq) return false;
       _globalError = '$e';
       notifyListeners();
+      return false;
     }
   }
 

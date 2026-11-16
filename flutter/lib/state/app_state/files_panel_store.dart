@@ -84,10 +84,12 @@ mixin FilesPanelStore on AppStateBase {
   String filesScopedPath(String path) {
     const prefix = 'worktree:';
     final key = _filesScopeKey;
-    if (key == null || p.isAbsolute(path) || !key.startsWith(prefix)) {
+    // Server paths are posix regardless of the client platform.
+    final posix = p.Context(style: p.Style.posix);
+    if (key == null || posix.isAbsolute(path) || !key.startsWith(prefix)) {
       return path;
     }
-    return p.normalize(p.join(key.substring(prefix.length), path));
+    return posix.normalize(posix.join(key.substring(prefix.length), path));
   }
 
   /// The thread_id to attach to file API calls. Sent only while the loaded

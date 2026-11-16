@@ -157,6 +157,30 @@ void main() {
       expect(find.textContaining('No diff content yet'), findsOneWidget);
     });
 
+    testWidgets('marks omitted context before and after a hunk', (
+      tester,
+    ) async {
+      final oldText = List.generate(20, (i) => 'line ${i + 1}').join('\n');
+      final newText = oldText.replaceFirst('line 10', 'CHANGED');
+      final diff = FileDiff(path: '/x.dart', oldText: oldText, newText: newText);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: DiffView(diff: diff)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final rendered = tester
+          .widget<SelectableText>(find.byType(SelectableText))
+          .textSpan!
+          .toPlainText();
+      // Context outside the +/-3 window is collapsed into skip markers on
+      // both sides of the change, not silently dropped.
+      expect('…'.allMatches(rendered).length, 2);
+      expect(rendered, contains('- line 10'));
+      expect(rendered, contains('+ CHANGED'));
+    });
+
     testWidgets('respects maxHeight when provided', (tester) async {
       final diff = FileDiff(
         path: '/x.dart',

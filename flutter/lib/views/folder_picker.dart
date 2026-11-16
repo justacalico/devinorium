@@ -149,6 +149,12 @@ class _FolderPickerState extends State<FolderPicker> {
       return;
     }
 
+    // Only a `..` segment is traversal; names like `my..dir` are legal.
+    if (text.split(RegExp(r'[/\\]')).contains('..')) {
+      setState(() => _error = l10n(context).pathTraversalNotAllowed);
+      return;
+    }
+
     if (text == '~' || text.startsWith('~/') || text.startsWith('~\\')) {
       _isAbsolute = false;
       var rest = text;
@@ -169,11 +175,6 @@ class _FolderPickerState extends State<FolderPicker> {
         );
       _controller.text = _displayPath;
       _load();
-      return;
-    }
-
-    if (text.contains('..')) {
-      setState(() => _error = l10n(context).pathTraversalNotAllowed);
       return;
     }
 

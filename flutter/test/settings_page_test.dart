@@ -128,12 +128,15 @@ class _FakeApiService extends ApiService {
   @override
   Future<List<User>> listUsers() async => List.unmodifiable(_users);
 
+  Exception? createUserError;
+
   @override
   Future<void> createUser({
     required String username,
     required String password,
   }) async {
     createUserCalls++;
+    if (createUserError != null) throw createUserError!;
     _users.add(
       User(
         id: _users.length + 1,
@@ -897,6 +900,50 @@ void main() {
 
     expect(fake.createUserCalls, 1);
     expect(find.text('alice'), findsOneWidget);
+  });
+
+  testWidgets('Failed user creation keeps the dialog open with the error', (
+    tester,
+  ) async {
+    final fake = _FakeApiService()
+      ..createUserError = Exception('username already exists');
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(5);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Create user'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Username'),
+      'alice',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Password'),
+      'password1234',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+    await tester.pumpAndSettle();
+
+    // The dialog must stay open so the user can retry; the error renders
+    // inline instead of only flashing by in globalError.
+    expect(find.widgetWithText(TextField, 'Username'), findsOneWidget);
+    expect(find.textContaining('username already exists'), findsOneWidget);
   });
 
   testWidgets('Owner resets a user password from the accounts list', (
@@ -1770,6 +1817,52 @@ void main() {
 
     expect(state.globalError, contains('path must be absolute'));
     expect(find.textContaining('path must be absolute'), findsOneWidget);
+  });
+
+  testWidgets('Clone root field resets when the active server changes', (
+    tester,
+  ) async {
+    final fake = _FakeApiService()..cloneRootToReturn = '/srv/clones';
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      cloneRoot: '/srv/clones',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
+    final field = find.byType(TextField).first;
+    expect(tester.widget<TextField>(field).controller!.text, '/srv/clones');
+
+    // The new server reports no clone root; the old value must not leak
+    // into the field (or get saved to the new server by accident).
+    state.multiServerState.addTestConnection(
+      ServerProfile(
+        id: 'other',
+        label: 'other',
+        baseUrl: 'http://other',
+        token: 'token',
+        username: 'owner',
+        createdAt: DateTime.now().toUtc(),
+      ),
+      _FakeApiService(),
+    );
+    await state.loadCloneRoot();
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<TextField>(field).controller!.text, isEmpty);
   });
 
   testWidgets('Directories section shows a save error only once', (
