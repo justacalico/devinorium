@@ -316,11 +316,13 @@ void main() {
         // CreateProcess cannot run `code` directly when only code.cmd exists.
         expect(await _ids(launcher), contains('vscode'));
         expect(await launcher.open(r'C:\repo', 'vscode'), isTrue);
-        expect(
-          spawn.calls.single.command,
+        expect(spawn.calls.single.command, 'cmd.exe');
+        expect(spawn.calls.single.args, [
+          '/c',
           r'C:\Users\me\AppData\Local\Programs\Microsoft VS Code\bin\code.cmd',
-        );
-        expect(spawn.calls.single.runInShell, isTrue);
+          r'C:\repo',
+        ]);
+        expect(spawn.calls.single.runInShell, isFalse);
       },
     );
 
@@ -335,8 +337,28 @@ void main() {
         spawn: spawn,
       );
       expect(await launcher.open(r'C:\repo', 'vscode'), isTrue);
-      expect(spawn.calls.single.runInShell, isTrue);
+      expect(spawn.calls.single.command, 'cmd.exe');
     });
+
+    test(
+      'windows .cmd launch passes paths with shell metacharacters as a '
+      'separate argument',
+      () async {
+        final spawn = _SpawnRecorder();
+        final launcher = _launcher(
+          os: 'windows',
+          env: {'ProgramFiles': r'C:\Program Files'},
+          executables: {
+            r'C:\Program Files\Microsoft VS Code\resources/app/bin\code.cmd',
+          },
+          spawn: spawn,
+        );
+        expect(await launcher.open(r'C:\src\a&b', 'vscode'), isTrue);
+        // Each piece is a distinct argv entry: Dart quotes them for
+        // CommandLineToArgvW, and cmd.exe leaves the `&` literal.
+        expect(spawn.calls.single.args, contains(r'C:\src\a&b'));
+      },
+    );
 
     test('opens the platform file manager', () async {
       final spawn = _SpawnRecorder();
