@@ -13,10 +13,12 @@ import 'package:devinorium_frontend/views/sidebar.dart';
 import 'package:devinorium_frontend/views/window_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import 'fake_api.dart';
 
 http.Response _json(int status, Object body) => http.Response(
       jsonEncode(body),
@@ -54,7 +56,7 @@ Widget _buildWithState(
 }
 
 AppState _baseState({ApiClient? api}) => AppState.test(
-      api: api != null ? ApiService(client: api) : null,
+      api: ApiService(client: api ?? ApiClient.withClient(infraOnlyClient())),
       user: User(
         id: 1,
         username: 'owner',
@@ -84,6 +86,7 @@ AppState _baseState({ApiClient? api}) => AppState.test(
 
 void main() {
   setUpAll(() {
+    SharedPreferences.setMockInitialValues({});
     PackageInfo.setMockInitialValues(
       appName: 'Devinorium',
       packageName: 'devinorium_frontend',

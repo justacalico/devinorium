@@ -10,9 +10,9 @@ import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/settings/topics.dart';
 import 'package:devinorium_frontend/views/settings_page.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
+
+import 'fake_api.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -34,7 +34,7 @@ class _FakeApiService extends ApiService {
   _FakeApiService()
     : super(
         client: ApiClient.withClient(
-          MockClient((_) async => http.Response('{}', 200)),
+          infraOnlyClient(),
         ),
       );
 

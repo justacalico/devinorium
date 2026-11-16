@@ -6,15 +6,14 @@ import 'package:devinorium_frontend/servers/server_profile.dart';
 import 'package:devinorium_frontend/services/local_server.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'fake_api.dart';
 
 class _FakeApi extends ApiService {
   _FakeApi()
     : super(
         client: ApiClient.withClient(
-          MockClient((_) async => http.Response('{}', 200)),
+          infraOnlyClient(),
         ),
       );
 

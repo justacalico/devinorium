@@ -15,13 +15,12 @@ import 'package:devinorium_frontend/widgets/git_provider_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:devinorium_frontend/generated/l10n/app_localizations.dart';
+import 'fake_api.dart';
 
 class _FakeApiService extends ApiService {
   int updateMeCalls = 0;
@@ -80,7 +79,7 @@ class _FakeApiService extends ApiService {
           ],
       super(
         client: ApiClient.withClient(
-          MockClient((_) async => http.Response('{}', 200)),
+          infraOnlyClient(),
         ),
       );
 
@@ -314,6 +313,7 @@ Widget _buildWithState(AppState state) => MaterialApp(
 
 void main() {
   setUpAll(() {
+    SharedPreferences.setMockInitialValues({});
     PackageInfo.setMockInitialValues(
       appName: 'Devinorium',
       packageName: 'devinorium_frontend',

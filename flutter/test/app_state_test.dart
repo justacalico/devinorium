@@ -70,7 +70,8 @@ class _StreamableApiService extends ApiService {
     List<int> machineIds = const [],
   }) {
     lastClientMessageId = clientMessageId;
-    return streamBuilder?.call() ?? Stream.empty();
+    return streamBuilder?.call() ??
+        Stream.error(UnimplementedError('sendMessageStream was not stubbed'));
   }
 
   @override

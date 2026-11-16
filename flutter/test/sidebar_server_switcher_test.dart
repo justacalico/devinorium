@@ -6,12 +6,11 @@ import 'package:devinorium_frontend/servers/server_profile.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/sidebar.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'fake_api.dart';
 
 class _FakeAppState extends AppState {
   String? switchedTo;
@@ -46,7 +45,7 @@ MultiServerState _twoServerState() {
     isPrimary: true,
   );
   final client = ApiClient.withClient(
-    MockClient((_) async => http.Response('{}', 200)),
+    infraOnlyClient(),
   );
   multi.addTestConnection(work, ApiService(client: client));
   multi.addTestConnection(home, ApiService(client: client));
@@ -65,7 +64,7 @@ MultiServerState _oneServerState() {
     isPrimary: true,
   );
   final client = ApiClient.withClient(
-    MockClient((_) async => http.Response('{}', 200)),
+    infraOnlyClient(),
   );
   multi.addTestConnection(home, ApiService(client: client));
   return multi;
@@ -204,7 +203,7 @@ void main() {
       createdAt: DateTime(2024, 1, 1).toUtc(),
     );
     final client = ApiClient.withClient(
-      MockClient((_) async => http.Response('{}', 200)),
+      infraOnlyClient(),
     );
     multi.addTestConnection(remote, ApiService(client: client));
     multi.addTestConnection(local, ApiService(client: client));
