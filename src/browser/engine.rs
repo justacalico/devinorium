@@ -598,6 +598,7 @@ const SNAPSHOT_JS: &str = r#"function(opts) {
     document.querySelectorAll('[' + ATTR + ']').forEach(e => e.removeAttribute(ATTR));
     const sel = 'a[href],button,input,textarea,select,summary,label,[role="button"],[role="link"],[role="checkbox"],[role="radio"],[role="textbox"],[role="combobox"],[role="listbox"],[role="option"],[role="tab"],[role="menuitem"],[role="switch"],[role="searchbox"],[role="slider"],[contenteditable="true"],[onclick],[tabindex]';
     const items = [];
+    const trunc = (s, max) => { const c = Array.from(s); return c.length > max ? c.slice(0, max).join('') : s; };
     let n = 0;
     for (const el of document.querySelectorAll(sel)) {
         if (n >= opts.max) break;
@@ -606,8 +607,8 @@ const SNAPSHOT_JS: &str = r#"function(opts) {
         if (cs.display === 'none' || cs.visibility === 'hidden' || r.width < 1 || r.height < 1) continue;
         const ref = String(++n);
         el.setAttribute(ATTR, ref);
-        const name = (el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || el.value || el.placeholder || el.getAttribute('alt') || el.getAttribute('name') || '')
-            .trim().replace(/\s+/g, ' ').slice(0, 120);
+        const name = trunc(el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || el.value || el.placeholder || el.getAttribute('alt') || el.getAttribute('name') || '')
+            .trim().replace(/\s+/g, ' '), 120);
         items.push({
             ref,
             tag: el.tagName.toLowerCase(),
@@ -617,12 +618,12 @@ const SNAPSHOT_JS: &str = r#"function(opts) {
             href: el.getAttribute('href') || '',
             disabled: !!el.disabled,
             checked: el.checked === true,
-            value: (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') ? String(el.value || '').slice(0, 100) : '',
+            value: (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') ? trunc(String(el.value || ''), 100) : '',
         });
     }
     let text = document.body ? (document.body.innerText || '') : '';
     text = text.replace(/\n{3,}/g, '\n\n').trim();
-    if (text.length > opts.textMax) text = text.slice(0, opts.textMax) + '\n...[truncated]';
+    { const c = Array.from(text); if (c.length > opts.textMax) text = c.slice(0, opts.textMax).join('') + '\n...[truncated]'; }
     return { title: document.title, url: location.href, elements: items, text };
 }"#;
 
