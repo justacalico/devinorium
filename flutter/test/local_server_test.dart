@@ -107,7 +107,7 @@ void main() {
         environment: const {},
         dataDir: dir.path,
       );
-      addTearDown(manager.dispose);
+      addTearDown(() async { await manager.stop(); manager.dispose(); });
       expect(await manager.ensureRunning(), isNull);
     });
 
@@ -142,7 +142,7 @@ void main() {
       addTearDown(() => dir.deleteSync(recursive: true));
       final capturedEnv = <Map<String, String>>[];
       final manager = await fakeManager(dir: dir, capturedEnv: capturedEnv);
-      addTearDown(manager.dispose);
+      addTearDown(() async { await manager.stop(); manager.dispose(); });
 
       final endpoint = await manager.ensureRunning();
       expect(endpoint, isNotNull);
@@ -175,7 +175,7 @@ void main() {
                 Process.start('sh', ['-c', 'exit 1']),
         healthCheck: (_) async => false,
       );
-      addTearDown(manager.dispose);
+      addTearDown(() async { await manager.stop(); manager.dispose(); });
 
       expect(await manager.ensureRunning(), isNull);
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -192,7 +192,7 @@ void main() {
             (exe, args, {required environment, required workingDirectory}) =>
                 throw ProcessException(exe, args, 'no such file'),
       );
-      addTearDown(manager.dispose);
+      addTearDown(() async { await manager.stop(); manager.dispose(); });
       expect(await manager.ensureRunning(), isNull);
     });
 
@@ -213,7 +213,7 @@ void main() {
           return proc;
         },
       );
-      addTearDown(manager.dispose);
+      addTearDown(() async { await manager.stop(); manager.dispose(); });
 
       expect(await manager.ensureRunning(), isNotNull);
       spawned.single.kill();
@@ -242,7 +242,7 @@ void main() {
           return proc;
         },
       );
-      addTearDown(manager.dispose);
+      addTearDown(() async { await manager.stop(); manager.dispose(); });
 
       await manager.ensureRunning();
       await manager.stop();
@@ -268,7 +268,7 @@ void main() {
           return Process.start('sleep', ['30']);
         },
       );
-      addTearDown(manager.dispose);
+      addTearDown(() async { await manager.stop(); manager.dispose(); });
 
       final endpoint = await manager.ensureRunning();
       expect(endpoint!.baseUrl, 'http://127.0.0.1:45000');
@@ -293,7 +293,7 @@ void main() {
           return Process.start('sleep', ['30']);
         },
       );
-      addTearDown(manager.dispose);
+      addTearDown(() async { await manager.stop(); manager.dispose(); });
 
       final endpoint = await manager.ensureRunning();
       expect(endpoint, isNotNull);
@@ -314,7 +314,7 @@ void main() {
         },
         healthCheck: (_) async => false,
       );
-      addTearDown(manager.dispose);
+      addTearDown(() async { await manager.stop(); manager.dispose(); });
 
       for (var i = 0; i < 5; i++) {
         expect(await manager.ensureRunning(), isNull);
@@ -340,7 +340,7 @@ void main() {
         },
         healthCheck: (_) async => false,
       );
-      addTearDown(manager.dispose);
+      addTearDown(() async { await manager.stop(); manager.dispose(); });
 
       final first = manager.ensureRunning();
       // Let _start reach the health-wait loop, then abort it.
@@ -370,7 +370,7 @@ void main() {
           return proc;
         },
       );
-      addTearDown(manager.dispose);
+      addTearDown(() async { await manager.stop(); manager.dispose(); });
       expect(await manager.ensureRunning(), isNotNull);
 
       final stop1 = manager.stop();
