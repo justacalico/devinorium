@@ -672,10 +672,17 @@ async fn file_sync(path: &Path) -> Result<()> {
 }
 
 /// Restart into the staged update after [`RESTART_DELAY`], giving the
-/// in-flight HTTP response time to flush.
-pub fn schedule_restart(exe: PathBuf, staged: PathBuf) {
+/// in-flight HTTP response time to flush. `drain` runs between the delay
+/// and the exec so runs are stopped and terminal sessions reaped instead
+/// of being orphaned by exec replacing the image without destructors.
+pub fn schedule_restart(
+    exe: PathBuf,
+    staged: PathBuf,
+    drain: impl std::future::Future<Output = ()> + Send + 'static,
+) {
     tokio::spawn(async move {
         tokio::time::sleep(RESTART_DELAY).await;
+        drain.await;
         restart_process(&exe, &staged);
     });
 }
