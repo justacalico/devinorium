@@ -87,12 +87,11 @@ impl Config {
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
         let default_model = env_or("DEVINORIUM_DEFAULT_MODEL", "glm-5-2");
-        let trust_proxy = env_or("DEVINORIUM_TRUST_PROXY", "false").eq_ignore_ascii_case("true");
+        let trust_proxy = truthy_env("DEVINORIUM_TRUST_PROXY");
         let max_body_bytes = env_or("DEVINORIUM_MAX_BODY_BYTES", "16777216")
             .parse::<usize>()
             .context("DEVINORIUM_MAX_BODY_BYTES must be a valid usize")?;
-        let secure_cookie =
-            env_or("DEVINORIUM_SECURE_COOKIE", "false").eq_ignore_ascii_case("true");
+        let secure_cookie = truthy_env("DEVINORIUM_SECURE_COOKIE");
         let allowed_origin = std::env::var("DEVINORIUM_ALLOWED_ORIGIN")
             .ok()
             .filter(|s| !s.is_empty());
