@@ -6814,6 +6814,72 @@ async fn thread_group_create_list_rename_delete() {
 }
 
 #[tokio::test]
+async fn thread_group_missing_id_returns_404_and_rename_trims() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            "/api/thread-groups/999999",
+            &cookie,
+            r#"{"name":"nope"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("DELETE", "/api/thread-groups/999999", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/thread-groups",
+            &cookie,
+            r#"{"name":"Pad"}"#,
+        ))
+        .await
+        .unwrap();
+    let gid: i64 = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await)
+        .unwrap()["id"]
+        .as_i64()
+        .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/thread-groups/{gid}"),
+            &cookie,
+            r#"{"name":"  Trimmed  "}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(
+        app.clone()
+            .oneshot(authed(
+                "GET",
+                &format!("/api/thread-groups/{gid}"),
+                &cookie,
+                "",
+            ))
+            .await
+            .unwrap()
+            .into_body(),
+    )
+    .await;
+    assert!(body.contains(r#""name":"Trimmed""#), "body: {body}");
+}
+
+#[tokio::test]
 async fn thread_group_with_threads() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;

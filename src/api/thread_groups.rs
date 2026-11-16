@@ -73,7 +73,8 @@ async fn create(
     Json(req): Json<CreateGroup>,
 ) -> Response {
     let name = req.name.unwrap_or_else(|| "New Group".into());
-    if name.trim().is_empty() || name.len() > 100 {
+    let name = name.trim();
+    if name.is_empty() || name.len() > 100 {
         return (
             StatusCode::BAD_REQUEST,
             Json(crate::api::ApiError::new("name must be 1-100 chars")),
@@ -86,7 +87,7 @@ async fn create(
     };
     let new = NewThreadGroup {
         user_id: user.id,
-        name: name.trim().to_string(),
+        name: name.to_string(),
         position,
     };
     let group = match state.db.create_thread_group(new).await {
@@ -132,14 +133,20 @@ async fn rename(
     Path(id): Path<i64>,
     Json(req): Json<RenameGroup>,
 ) -> Response {
-    if req.name.trim().is_empty() || req.name.len() > 100 {
+    let name = req.name.trim();
+    if name.is_empty() || name.len() > 100 {
         return (
             StatusCode::BAD_REQUEST,
             Json(crate::api::ApiError::new("name must be 1-100 chars")),
         )
             .into_response();
     }
-    match state.db.rename_thread_group(id, user.id, &req.name).await {
+    match state.db.rename_thread_group(id, user.id, name).await {
+        Ok(0) => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("not found")),
+        )
+            .into_response(),
         Ok(_) => Json(serde_json::json!({"ok": true})).into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
@@ -151,6 +158,11 @@ async fn delete(
     Path(id): Path<i64>,
 ) -> Response {
     match state.db.delete_thread_group(id, user.id).await {
+        Ok(0) => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("not found")),
+        )
+            .into_response(),
         Ok(_) => Json(serde_json::json!({"ok": true})).into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
