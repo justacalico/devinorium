@@ -654,8 +654,7 @@ mixin ThreadListStore on AppStateBase {
     final store = _activeStore;
     if (store == null) return;
     if (store.sendPending) {
-      store.cancelPendingSend();
-      return;
+      await store.abortPendingSend(stopRun: true);
     }
     if (!store.sending) return;
     await store.stop();

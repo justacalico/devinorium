@@ -421,16 +421,19 @@ class AppState extends AppStateBase
   @override
   void _setActiveStore(ThreadStore? store) {
     if (_activeStore == store) return;
-    _activeStore?.onStateChanged = null;
-    _activeStore?.onThreadUpdated = null;
-    _activeStore?.onRunFinished = null;
-    _activeStore?.onAgentEditedFiles = null;
-    _activeStore?.onThreadsListRefresh = null;
-    _activeStore?.cancelStream();
-    _activeStore?.clearStreamingState();
-    // A send cancelled by the switch never got its ack; hand the text back
-    // so it persists as a draft and the cached store is not wedged.
-    _activeStore?.restorePendingSend();
+    final old = _activeStore;
+    // A send cancelled by the switch may still land server-side; check the
+    // persisted tail instead of blindly restoring a draft for a message
+    // that already went out. Started before the callbacks detach because
+    // the resync refuses to run once onStateChanged is cleared.
+    unawaited(old?.abortPendingSend());
+    old?.onStateChanged = null;
+    old?.onThreadUpdated = null;
+    old?.onRunFinished = null;
+    old?.onAgentEditedFiles = null;
+    old?.onThreadsListRefresh = null;
+    old?.cancelStream();
+    old?.clearStreamingState();
     _activeStore = store;
     _activeThreadId = store?.threadId;
     _planOverlayVisible = false;

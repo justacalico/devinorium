@@ -423,6 +423,7 @@ class ThreadStore {
 
     // Snapshot the composer so we can restore it if the turn fails before the
     // server acknowledges the user message.
+    _persistedSendNeedsStop = false;
     _pendingSend = _PendingSend(
       prompt: prompt,
       composerText: composerText,
@@ -546,6 +547,7 @@ class ThreadStore {
       String? clientMessageId;
       if (editing) {
         clientMessageId = _newClientMessageId();
+        _persistedSendNeedsStop = false;
         _pendingSend = _PendingSend(
           prompt: editedPrompt,
           composerText: editedPrompt,
@@ -645,12 +647,69 @@ class ThreadStore {
     onComposerTextChanged?.call(value);
   }
 
-  /// Cancel a queued send that has not reached the stream yet. Puts the
-  /// draft back exactly like a failed send would.
-  void cancelPendingSend() {
-    if (_pendingSend == null) return;
-    _restorePendingSend();
+  // Serializes aborts: a stop press and a thread switch can both reach
+  // abortPendingSend at once, and two concurrent reconciles could read
+  // different tails and disagree about the send's fate.
+  Future<void>? _abortInFlight;
+
+  // Set when an abort found the message persisted but was not asked to
+  // stop, so a queued stop still reaches the run.
+  bool _persistedSendNeedsStop = false;
+
+  /// Abort a send that may still be in flight: cancel the upload, then
+  /// check the persisted tail. A message that already landed keeps its
+  /// place (and with [stopRun] its run is stopped); one that never
+  /// arrived comes back as a draft.
+  Future<void> abortPendingSend({bool stopRun = false}) {
+    final running = _abortInFlight;
+    final job = running == null
+        ? _abortPendingSend(stopRun: stopRun)
+        : running.then((_) => _abortPendingSend(stopRun: stopRun));
+    _abortInFlight = job;
+    return job.whenComplete(() {
+      if (identical(_abortInFlight, job)) _abortInFlight = null;
+    });
+  }
+
+  Future<void> _abortPendingSend({bool stopRun = false}) async {
+    final pending = _pendingSend;
+    if (pending == null) {
+      if (stopRun && _persistedSendNeedsStop) {
+        _persistedSendNeedsStop = false;
+        await _stopPersistedRun();
+      }
+      return;
+    }
+    final draftHook = onComposerTextChanged;
+    _cancelStream();
+    await _reconcilePendingSend(detached: true);
+    // Reconciliation clears _pendingSend itself once it finds the echoed
+    // client id, so persistence is judged from the refetched detail.
+    if (_hasPersistedClientMessage(pending.clientMessageId)) {
+      _persistedSendNeedsStop = false;
+      if (stopRun) {
+        await _stopPersistedRun();
+      } else {
+        _persistedSendNeedsStop = true;
+      }
+    } else if (identical(_pendingSend, pending)) {
+      _restorePendingSend(draftHook: draftHook);
+    }
+    // The subscription is gone either way; a server-side run is picked up
+    // again by the next refresh instead of a dead sending spinner.
+    if (_streaming.phase == StreamPhase.sending) {
+      _streaming = _streaming.copyWith(phase: StreamPhase.idle);
+    }
     _emit();
+  }
+
+  Future<void> _stopPersistedRun() async {
+    try {
+      await api.stopThread(threadId);
+    } catch (e) {
+      debugLogFailure('thread.stop', e, threadId: threadId);
+      _globalError = '$e';
+    }
   }
 
   /// Ask the server to stop the current run.
@@ -831,8 +890,12 @@ class ThreadStore {
     _emitPending = false;
     _cancelStream();
     // Give an unsent message back to the composer before the draft hook is
-    // severed; the write still persists under this thread's key.
-    _restorePendingSend();
+    // severed; the write still persists under this thread's key. An abort
+    // in flight decides the send's fate itself, so restoring here would
+    // resurrect a draft for a message that already landed.
+    if (_abortInFlight == null) {
+      _restorePendingSend();
+    }
     _scheduler.dispose();
     onStateChanged = null;
     onThreadUpdated = null;
@@ -1124,13 +1187,17 @@ class ThreadStore {
   /// request may or may not have deleted rows server-side and the local
   /// list can no longer be trusted. A second delayed fetch covers the race
   /// where the stream died before the server's run task committed the
-  /// deletion.
-  Future<void> _resyncMessages() async {
+  /// deletion. [detached] keeps the retries running after the app
+  /// untethers the store: a thread switch fires abortPendingSend right
+  /// before onStateChanged is cleared, and the delayed second fetch
+  /// exists exactly for the commit that lands between the two reads.
+  Future<void> _resyncMessages({bool detached = false}) async {
     for (var attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) {
         await Future<void>.delayed(const Duration(milliseconds: 400));
       }
-      if (_status == ThreadStoreStatus.deleted || onStateChanged == null) {
+      if (_status == ThreadStoreStatus.deleted ||
+          (!detached && onStateChanged == null)) {
         return;
       }
       final d = _detail.valueOrNull;
@@ -1413,7 +1480,7 @@ class ThreadStore {
   /// acknowledgement even though the server persisted it. Refetch the tail
   /// and clear the pending snapshot when the message is found so recovery
   /// does not mistake an acknowledged send for a failed one.
-  Future<void> _reconcilePendingSend() async {
+  Future<void> _reconcilePendingSend({bool detached = false}) async {
     final pending = _pendingSend;
     if (pending == null) return;
     if (_hasPersistedClientMessage(pending.clientMessageId)) {
@@ -1424,7 +1491,7 @@ class ThreadStore {
       await reloadDetail();
       await _loadInitialMessages();
     } else {
-      await _resyncMessages();
+      await _resyncMessages(detached: detached);
     }
     final still = _pendingSend;
     if (still != null && _hasPersistedClientMessage(still.clientMessageId)) {
@@ -1660,12 +1727,7 @@ class ThreadStore {
     }
   }
 
-  /// Put an unacknowledged send back into the composer. Called when the
-  /// store is deactivated or disposed mid-send so the text is not lost with
-  /// the cancelled stream. No-op when nothing is pending.
-  void restorePendingSend() => _restorePendingSend();
-
-  void _restorePendingSend() {
+  void _restorePendingSend({void Function(String)? draftHook}) {
     final pending = _pendingSend;
     if (pending == null) {
       _optimisticMessages.clear();
@@ -1675,6 +1737,11 @@ class ThreadStore {
     // after the send went out wins over restoring the failed prompt.
     if (composerText.trim().isEmpty) {
       setComposerText(pending.composerText);
+      // A store detached mid-abort has no live composer hook; the captured
+      // one still persists the draft under this thread's key.
+      if (onComposerTextChanged == null) {
+        draftHook?.call(composerText);
+      }
     }
     if (!pending.resendEdit) {
       // Resend edits never snapshot the chips or the mode — they belong to
