@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import '../l10n/global_l10n.dart';
 import '../models/models.dart';
 import '../utils/preloader.dart';
 import 'api_client.dart';
@@ -10,11 +11,16 @@ import 'api_client.dart';
 ///
 /// Mutating requests clear the list cache so the UI does not show stale data.
 class PreloaderClient implements BaseApiClient {
-  PreloaderClient(this._inner, {Preloader? preloader})
-    : _preloader = preloader ?? Preloader();
+  PreloaderClient(
+    this._inner, {
+    Preloader? preloader,
+    Duration? inFlightCeiling,
+  }) : _preloader = preloader ?? Preloader(),
+       _inFlightCeiling = inFlightCeiling ?? _defaultInFlightCeiling;
 
   final BaseApiClient _inner;
   final Preloader _preloader;
+  final Duration _inFlightCeiling;
 
   /// The wrapped client, exposed so callers can inspect the platform client.
   BaseApiClient get inner => _inner;
@@ -24,16 +30,27 @@ class PreloaderClient implements BaseApiClient {
 
   static const _listTtl = Duration(seconds: 2);
 
+  /// Upper bound for a request tracked by the preloader. A half-dead socket
+  /// can hold an HTTP request open far past the point where the UI gave up;
+  /// without a ceiling the zombie in-flight entry would keep coalescing
+  /// retries onto itself and the panel behind it could never recover.
+  static const _defaultInFlightCeiling = Duration(seconds: 30);
+
   @override
-  Future<Map<String, dynamic>> get(String path) =>
-      _preloader.load('GET:$path', () => _inner.get(path), ttl: Duration.zero);
+  Future<Map<String, dynamic>> get(String path) => _preloader.load(
+    'GET:$path',
+    () => _inner.get(path).timeout(_inFlightCeiling, onTimeout: _timedOut),
+    ttl: Duration.zero,
+  );
 
   @override
   Future<List<Map<String, dynamic>>> getList(String path) => _preloader.load(
     'GETLIST:$path',
-    () => _inner.getList(path),
+    () => _inner.getList(path).timeout(_inFlightCeiling, onTimeout: _timedOut),
     ttl: _listTtl,
   );
+
+  static Never _timedOut() => throw ApiException(appL10n.requestTimedOut, 0);
 
   @override
   Stream<SseEvent> getStream({required String path}) =>

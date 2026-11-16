@@ -14,11 +14,22 @@ class ApiService {
   static const _probeTimeout = Duration(seconds: 5);
 
   /// Bound for small requests that gate UI flows (login, session load).
-  static const _requestTimeout = Duration(seconds: 15);
+  static const _defaultRequestTimeout = Duration(seconds: 15);
+
+  /// Bound for file content reads/writes, which can carry larger bodies.
+  static const _defaultFileContentTimeout = Duration(seconds: 30);
 
   final BaseApiClient _client;
+  final Duration _requestTimeout;
+  final Duration _fileContentTimeout;
 
-  ApiService({BaseApiClient? client}) : _client = client ?? createApiClient();
+  ApiService({
+    BaseApiClient? client,
+    @visibleForTesting Duration? requestTimeout,
+    @visibleForTesting Duration? fileContentTimeout,
+  }) : _client = client ?? createApiClient(),
+       _requestTimeout = requestTimeout ?? _defaultRequestTimeout,
+       _fileContentTimeout = fileContentTimeout ?? _defaultFileContentTimeout;
 
   BaseApiClient get client => _client;
 
@@ -30,7 +41,7 @@ class ApiService {
   Future<User> me() async {
     final j = await _client
         .get('/api/auth/me')
-        .timeout(_requestTimeout, onTimeout: _requestTimedOut);
+        .timeout(_requestTimeout, onTimeout: _timedOut);
     return User.fromJson(j);
   }
 
@@ -48,7 +59,7 @@ class ApiService {
     }
     final j = await _client
         .post('/api/auth/login', body)
-        .timeout(_requestTimeout, onTimeout: _requestTimedOut);
+        .timeout(_requestTimeout, onTimeout: _timedOut);
     return LoginResponse.fromJson(j);
   }
 
@@ -504,12 +515,16 @@ class ApiService {
     if (limit != null) params['limit'] = limit.toString();
     if (offset != null && offset > 0) params['offset'] = offset.toString();
     final uri = _buildPath('/api/projects/$id/threads', params);
-    final list = await _client.getList(uri);
+    final list = await _client
+        .getList(uri)
+        .timeout(_requestTimeout, onTimeout: _timedOut);
     return list.map(Thread.fromJson).toList();
   }
 
   Future<Map<String, dynamic>> getThreadProject(String id) async {
-    return await _client.get('/api/threads/$id/project');
+    return await _client
+        .get('/api/threads/$id/project')
+        .timeout(_requestTimeout, onTimeout: _timedOut);
   }
 
   // ---- Threads ----
@@ -519,7 +534,9 @@ class ApiService {
     if (limit != null) params['limit'] = limit.toString();
     if (offset != null && offset > 0) params['offset'] = offset.toString();
     final uri = _buildPath('/api/threads', params);
-    final list = await _client.getList(uri);
+    final list = await _client
+        .getList(uri)
+        .timeout(_requestTimeout, onTimeout: _timedOut);
     return list.map(Thread.fromJson).toList();
   }
 
@@ -560,7 +577,9 @@ class ApiService {
     if (includeMessages) params['include_messages'] = '1';
     if (turnLimit != null) params['turn_limit'] = turnLimit.toString();
     final uri = _buildPath('/api/threads/$id', params);
-    final meta = await _client.get(uri);
+    final meta = await _client
+        .get(uri)
+        .timeout(_requestTimeout, onTimeout: _timedOut);
     return ThreadDetail.fromJson(meta);
   }
 
@@ -582,7 +601,9 @@ class ApiService {
       if (afterId != null) params['after_id'] = afterId.toString();
     }
     final uri = _buildPath('/api/threads/$id/messages', params);
-    final j = await _client.get(uri);
+    final j = await _client
+        .get(uri)
+        .timeout(_requestTimeout, onTimeout: _timedOut);
     return MessagePage.fromJson(j);
   }
 
@@ -748,7 +769,9 @@ class ApiService {
     if (limit != null) params['limit'] = limit.toString();
     if (offset != null && offset > 0) params['offset'] = offset.toString();
     final uri = _buildPath('/api/thread-groups', params);
-    final list = await _client.getList(uri);
+    final list = await _client
+        .getList(uri)
+        .timeout(_requestTimeout, onTimeout: _timedOut);
     return list.map(ThreadGroup.fromJson).toList();
   }
 
@@ -878,7 +901,9 @@ class ApiService {
     }
     if (includeDiff) params['diff'] = 'true';
     final uri = _buildPath('/api/files/content', params);
-    final j = await _client.get(uri);
+    final j = await _client
+        .get(uri)
+        .timeout(_fileContentTimeout, onTimeout: _timedOut);
     return FileContent.fromJson(j);
   }
 
@@ -896,7 +921,9 @@ class ApiService {
       body['expected_sha256'] = expectedSha256;
     }
     try {
-      final j = await _client.put('/api/files/content', body);
+      final j = await _client
+          .put('/api/files/content', body)
+          .timeout(_fileContentTimeout, onTimeout: _timedOut);
       return FileContent.fromJson(j);
     } on ApiException catch (e) {
       if (e.statusCode == 409 && e.data != null) {
@@ -927,7 +954,9 @@ class ApiService {
     if (limit != null) params['limit'] = limit.toString();
     if (offset != null && offset > 0) params['offset'] = offset.toString();
     final uri = _buildPath('/api/files', params);
-    final list = await _client.getList(uri);
+    final list = await _client
+        .getList(uri)
+        .timeout(_requestTimeout, onTimeout: _timedOut);
     return list.map(DirEntry.fromJson).toList();
   }
 
@@ -935,7 +964,9 @@ class ApiService {
     final body = <String, dynamic>{'path': path};
     if (projectId != null) body['project_id'] = projectId;
     if (threadId != null && threadId.isNotEmpty) body['thread_id'] = threadId;
-    await _client.post('/api/files/dir', body);
+    await _client
+        .post('/api/files/dir', body)
+        .timeout(_requestTimeout, onTimeout: _timedOut);
   }
 
   Future<void> deleteFile(
@@ -949,7 +980,7 @@ class ApiService {
       params['thread_id'] = threadId;
     }
     final uri = _buildPath('/api/files/delete', params);
-    await _client.delete(uri);
+    await _client.delete(uri).timeout(_requestTimeout, onTimeout: _timedOut);
   }
 
   Future<void> uploadFiles({
@@ -1019,7 +1050,9 @@ class ApiService {
 
   /// Get the current run status for a thread.
   Future<Map<String, dynamic>> getThreadRun(String id) async {
-    return await _client.get('/api/threads/$id/run');
+    return await _client
+        .get('/api/threads/$id/run')
+        .timeout(_requestTimeout, onTimeout: _timedOut);
   }
 
   /// Get the latest plan for a thread.
@@ -1178,8 +1211,7 @@ class ApiService {
     );
   }
 
-  static Map<String, dynamic> _requestTimedOut() =>
-      throw ApiException(appL10n.requestTimedOut, 0);
+  static Never _timedOut() => throw ApiException(appL10n.requestTimedOut, 0);
 
   /// Build a path with optional query parameters, encoding values safely.
   static String _buildPath(String path, Map<String, String> params) {
@@ -1467,7 +1499,8 @@ class ApiService {
   }
 
   /// Remove a user-scope plugin from the server.
-  Future<void> deletePlugin(String name) => _client.delete('/api/plugins/$name');
+  Future<void> deletePlugin(String name) =>
+      _client.delete('/api/plugins/$name');
 
   // ---- Federation ----
 

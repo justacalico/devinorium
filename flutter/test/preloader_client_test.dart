@@ -89,8 +89,7 @@ class _FakeClient implements BaseApiClient {
     Map<String, String> fields = const {},
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Stream<SseEvent> sendStream({
@@ -219,6 +218,48 @@ void main() {
       await f2;
 
       expect(inner.calls, ['GETLIST /api/projects', 'GETLIST /api/projects']);
+    });
+
+    test('hung in-flight getList times out and later calls refetch', () async {
+      final inner = _FakeClient();
+      final client = PreloaderClient(
+        inner,
+        inFlightCeiling: const Duration(milliseconds: 50),
+      );
+
+      await expectLater(
+        client.getList('/api/files'),
+        throwsA(isA<ApiException>()),
+      );
+
+      // The zombie entry was evicted: a retry hits the network instead of
+      // coalescing onto the dead future.
+      final f = client.getList('/api/files');
+      inner.resolveGetList(1, [
+        {'id': '1'},
+      ]);
+      expect(await f, [
+        {'id': '1'},
+      ]);
+      expect(inner.calls, ['GETLIST /api/files', 'GETLIST /api/files']);
+    });
+
+    test('hung in-flight get times out and later calls refetch', () async {
+      final inner = _FakeClient();
+      final client = PreloaderClient(
+        inner,
+        inFlightCeiling: const Duration(milliseconds: 50),
+      );
+
+      await expectLater(
+        client.get('/api/threads/a'),
+        throwsA(isA<ApiException>()),
+      );
+
+      final f = client.get('/api/threads/a');
+      inner.resolveGet(1, {'id': 'a'});
+      expect(await f, {'id': 'a'});
+      expect(inner.calls, ['GET /api/threads/a', 'GET /api/threads/a']);
     });
   });
 }

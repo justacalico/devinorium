@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -415,10 +416,7 @@ void main() {
       final bytes = Uint8List.fromList([1, 2, 3]);
       final mock = MockClient((req) async {
         expect(req, _requestTo('GET', '/api/projects/7/icon'));
-        return _json(200, {
-          'mime': 'image/png',
-          'base64': base64Encode(bytes),
-        });
+        return _json(200, {'mime': 'image/png', 'base64': base64Encode(bytes)});
       });
       final service = _serviceFor(mock);
       final icon = await service.projectIcon(7);
@@ -440,7 +438,10 @@ void main() {
       var calls = 0;
       final mock = MockClient((req) async {
         calls++;
-        return _json(200, {'mime': 'image/png', 'base64': base64Encode([1])});
+        return _json(200, {
+          'mime': 'image/png',
+          'base64': base64Encode([1]),
+        });
       });
       final service = _serviceFor(mock);
       await service.projectIcon(7);
@@ -454,7 +455,10 @@ void main() {
       final mock = MockClient((req) async {
         calls++;
         if (calls == 1) return _json(500, {'error': 'boom'});
-        return _json(200, {'mime': 'image/png', 'base64': base64Encode([1])});
+        return _json(200, {
+          'mime': 'image/png',
+          'base64': base64Encode([1]),
+        });
       });
       final service = _serviceFor(mock);
       expect(await service.projectIcon(7), isNull);
@@ -1548,6 +1552,56 @@ void main() {
       final mock = MockClient((req) async => _json(200, {}));
       final service = _serviceFor(mock);
       expect(await service.shareUrl('sh-1'), '/shared/sh-1');
+    });
+  });
+
+  group('Request timeouts', () {
+    // A response that never arrives, like a request caught on a half-dead
+    // socket when the network drops mid-flight.
+    MockClient hanging() =>
+        MockClient((req) => Completer<http.Response>().future);
+
+    ApiService shortTimeout(MockClient mock) => ApiService(
+      client: ApiClient.withClient(mock),
+      requestTimeout: const Duration(milliseconds: 50),
+      fileContentTimeout: const Duration(milliseconds: 50),
+    );
+
+    test('listFiles fails instead of hanging forever', () async {
+      final service = shortTimeout(hanging());
+      await expectLater(
+        service.listFiles(projectId: 1),
+        throwsA(isA<ApiException>()),
+      );
+    });
+
+    test('readFile fails instead of hanging forever', () async {
+      final service = shortTimeout(hanging());
+      await expectLater(
+        service.readFile(path: 'a.dart', projectId: 1),
+        throwsA(isA<ApiException>()),
+      );
+    });
+
+    test('writeFile fails instead of hanging forever', () async {
+      final service = shortTimeout(hanging());
+      await expectLater(
+        service.writeFile(path: 'a.dart', projectId: 1, content: 'x'),
+        throwsA(isA<ApiException>()),
+      );
+    });
+
+    test('getThread fails instead of hanging forever', () async {
+      final service = shortTimeout(hanging());
+      await expectLater(service.getThread('t1'), throwsA(isA<ApiException>()));
+    });
+
+    test('listThreads fails instead of hanging forever', () async {
+      final service = shortTimeout(hanging());
+      await expectLater(
+        service.listThreads(limit: 10),
+        throwsA(isA<ApiException>()),
+      );
     });
   });
 }
