@@ -1106,6 +1106,10 @@ pub async fn uninstall(home: &Path, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Serializes read-modify-write cycles on the plugin state file so two
+/// concurrent toggles cannot lose one another's update.
+static PLUGIN_STATE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Toggle a user-scope plugin via the state file's `disabled` list.
 pub async fn set_enabled(home: &Path, name: &str, enabled: bool) -> Result<(), String> {
     let exists = discover_plugins(None, home)
@@ -1115,6 +1119,7 @@ pub async fn set_enabled(home: &Path, name: &str, enabled: bool) -> Result<(), S
     if !exists {
         return Err(format!("no installed plugin named {name:?}"));
     }
+    let _guard = PLUGIN_STATE_LOCK.lock().await;
     let mut disabled = disabled_names(home).await;
     if enabled {
         disabled.remove(name);
@@ -1314,6 +1319,26 @@ mod tests {
         assert_eq!(demo.description, "a demo plugin");
         assert_eq!(demo.author, "Ada");
         assert!(demo.enabled);
+    }
+
+    #[tokio::test]
+    async fn concurrent_toggles_do_not_lose_updates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        user_plugin(&home);
+        write(
+            &plugins_root(&home).join("other"),
+            ".claude-plugin/plugin.json",
+            r#"{"name":"other"}"#,
+        );
+        let (a, b) = tokio::join!(
+            set_enabled(&home, "demo", false),
+            set_enabled(&home, "other", false),
+        );
+        a.unwrap();
+        b.unwrap();
+        let disabled = disabled_names(&home).await;
+        assert!(disabled.contains("demo") && disabled.contains("other"));
     }
 
     #[tokio::test]
