@@ -192,6 +192,32 @@ impl ChromiumEngine {
         }
     }
 
+    /// Reject the current page when its URL lands on a blocked target.
+    /// Internal pages such as about:blank carry no remote content and
+    /// are always allowed.
+    async fn guard_page(&self) -> Result<(), String> {
+        let Ok(Some(url)) = self.page.url().await else {
+            return Err("could not verify the current page url".to_string());
+        };
+        if url.starts_with("about:") || url.starts_with("chrome") {
+            return Ok(());
+        }
+        super::action::check_nav_target(&url).await
+    }
+
+    /// [guard_page](Self::guard_page), and when the page is disallowed
+    /// navigate it to about:blank so its content cannot be read back by
+    /// a later snapshot, screenshot, or evaluate call.
+    async fn guard_or_reset(&mut self) -> Result<(), String> {
+        match self.guard_page().await {
+            Err(e) => {
+                let _ = self.page.goto("about:blank".to_string()).await;
+                Err(e)
+            }
+            ok => ok,
+        }
+    }
+
     /// Snapshot the DOM: tag every visible interactive element with
     /// `data-dvref` and return title/url/elements/body text as JSON.
     async fn snapshot_json(&self) -> Result<Value, String> {
@@ -266,16 +292,7 @@ impl ChromiumEngine {
                         // where the page landed before its content is
                         // snapshotted. This gates what the agent is told,
                         // not what Chromium already fetched.
-                        match self.page.url().await {
-                            Ok(Some(final_url)) => {
-                                super::action::check_nav_target(&final_url).await?
-                            }
-                            _ => {
-                                return Err(
-                                    "could not verify the final navigation target".to_string()
-                                )
-                            }
-                        }
+                        self.guard_or_reset().await?;
                         let snap = self.snapshot_json().await?;
                         self.clock.stamp();
                         Ok(text(self.format_snapshot(&snap)))
@@ -285,11 +302,13 @@ impl ChromiumEngine {
                 }
             }
             Action::Snapshot => {
+                self.guard_or_reset().await?;
                 let snap = self.snapshot_json().await?;
                 self.clock.stamp();
                 Ok(text(self.format_snapshot(&snap)))
             }
             Action::Screenshot => {
+                self.guard_or_reset().await?;
                 let png = tokio::time::timeout(
                     OP_TIMEOUT,
                     self.page.screenshot(
@@ -312,6 +331,7 @@ impl ChromiumEngine {
                     .click()
                     .await
                     .map_err(|e| format!("click failed: {e}"))?;
+                self.guard_or_reset().await?;
                 Ok(text(format!(
                     "clicked {}\n{}",
                     target.to_css(),
@@ -346,6 +366,7 @@ impl ChromiumEngine {
                     el.press_key("Enter")
                         .await
                         .map_err(|e| format!("submit failed: {e}"))?;
+                    self.guard_or_reset().await?;
                 }
                 Ok(text(format!(
                     "typed {} chars into {}\n{}",
@@ -362,6 +383,7 @@ impl ChromiumEngine {
                 el.press_key(key.as_str())
                     .await
                     .map_err(|e| format!("unknown or unsupported key `{key}` ({e})"))?;
+                self.guard_or_reset().await?;
                 Ok(text(format!(
                     "pressed {key}\n{}",
                     page_header(&self.page, self.clock.epoch).await
@@ -421,6 +443,7 @@ impl ChromiumEngine {
                         tokio::time::sleep(Duration::from_millis(SETTLE_MS)).await;
                     }
                 }
+                self.guard_or_reset().await?;
                 Ok(text(format!(
                     "{}\n{}",
                     match action {
@@ -458,6 +481,7 @@ impl ChromiumEngine {
                 }
             }
             Action::Evaluate { expression } => {
+                self.guard_or_reset().await?;
                 let res: Value = self
                     .eval(&format!("(async()=>{{return ({expression})}})()"))
                     .await?;
