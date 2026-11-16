@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.116.1 - 2026-11-16
+#### Bug Fixes
+- 修复弱网下编辑器加载卡死且无法恢复 - (5ce72cc) - HttpAnimations
+
+- - -
+
 ## v0.116.0 - 2026-11-16
 #### Features
 - 前端新增代理浏览器实时预览面板 - (4cd441b) - HttpAnimations
