@@ -10,6 +10,8 @@ import '../models/models.dart' show tryDecodeJson, sanitizeHttpErrorBody;
 import 'api_types.dart';
 import 'sse_parser.dart';
 
+const _maxEventBytes = 4 * 1024 * 1024;
+
 Stream<SseEvent> platformFetchSseStream({
   required http.Client client,
   required String path,
@@ -121,6 +123,11 @@ Future<void> _runSse({
         buffer = buffer.substring(idx + 2);
         final event = parseSseBlock(block);
         if (event != null && !controller.isClosed) controller.add(event);
+      }
+      // Only the unterminated tail counts toward the cap: a chunk can carry
+      // many complete events.
+      if (buffer.length > _maxEventBytes) {
+        throw ApiException('SSE event exceeded ${_maxEventBytes}B', 0);
       }
     }
 

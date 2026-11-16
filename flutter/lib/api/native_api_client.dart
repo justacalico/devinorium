@@ -234,7 +234,7 @@ class NativeApiClient implements BaseApiClient {
     // Each SSE stream uses its own client because nativeSseStream closes it
     // when the stream ends or is cancelled.
     return nativeSseStream(
-      client: http.Client(),
+      clientFactory: http.Client.new,
       baseUrl: _baseUrl,
       token: _token,
       path: path,
@@ -252,7 +252,7 @@ class NativeApiClient implements BaseApiClient {
         const [],
   }) {
     return nativeSseStream(
-      client: http.Client(),
+      clientFactory: http.Client.new,
       baseUrl: _baseUrl,
       token: _token,
       path: path,
@@ -265,7 +265,7 @@ class NativeApiClient implements BaseApiClient {
   @override
   Stream<SseEvent> getStream({required String path}) {
     return nativeSseStream(
-      client: http.Client(),
+      clientFactory: http.Client.new,
       baseUrl: _baseUrl,
       token: _token,
       path: path,
