@@ -837,7 +837,22 @@ pub fn install_bundle(
                 Some(v) => args.push(config_value_string(v)),
                 None => {}
             },
-            None => args.push(substitute(arg, &lookup)),
+            None => {
+                if let Some(tok) = first_unresolved_token(arg, &lookup) {
+                    let _ = std::fs::remove_dir_all(&dest);
+                    return Err(format!("unresolved placeholder {tok} in args"));
+                }
+                args.push(substitute(arg, &lookup));
+            }
+        }
+    }
+    for (k, v) in &config.env {
+        if whole_user_config_ref(v).is_some_and(|k| !resolved.contains_key(k)) {
+            continue;
+        }
+        if let Some(tok) = first_unresolved_token(v, &lookup) {
+            let _ = std::fs::remove_dir_all(&dest);
+            return Err(format!("unresolved placeholder {tok} in env {k}"));
         }
     }
     let env = config
@@ -1052,6 +1067,24 @@ mod tests {
         let bytes = bundle(m, &[("s.js", b"x")]);
         let err = install_bundle(&bytes, dir.path(), dir.path(), &Map::new()).unwrap_err();
         assert!(err.contains("unresolved"), "{err}");
+    }
+
+    #[test]
+    fn install_rejects_unresolved_arg_and_env_placeholders() {
+        let dir = tempfile::tempdir().unwrap();
+        let m = r#"{"manifest_version":"0.3","name":"cfg2","version":"1","description":"d",
+            "author":{"name":"a"},
+            "server":{"type":"node","entry_point":"s.js",
+            "mcp_config":{"command":"node","args":["s.js","--dir=${user_confug.path}"],
+            "env":{"OUT":"${user_confug.path}"}}},
+            "user_config":{"path":{"type":"string"}}}"#;
+        let bytes = bundle(m, &[("s.js", b"x")]);
+        let err = install_bundle(&bytes, dir.path(), dir.path(), &Map::new()).unwrap_err();
+        assert!(err.contains("unresolved"), "{err}");
+        assert!(
+            !dir.path().join("cfg2").exists(),
+            "failed install must not leave the bundle dir"
+        );
     }
 
     #[test]
