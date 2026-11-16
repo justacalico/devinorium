@@ -52,7 +52,7 @@ pub fn tools() -> Value {
         },
         {
             "name": "browser_type",
-            "description": "Focus an element and type text into it, like a real keyboard. Set submit to also press Enter afterwards.",
+            "description": "Focus an element and insert text into it without per-key events. Set submit to also press Enter afterwards.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
